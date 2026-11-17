@@ -1,0 +1,139 @@
+{{--
+  Widget live chat customer (memakai public/js/livechat.js yang sama dengan admin).
+  Bisa dipakai tamu (belum login) maupun customer (role 2).
+  Pasang di layout frontend, tepat sebelum </body>:
+      @include('frontend.partials.livechat-widget')
+--}}
+@if (!auth()->check() || (string) (auth()->user()->role ?? '') === '2')
+
+<link rel="stylesheet" href="{{ asset('css/livechat.css') }}">
+
+<div id="lcw">
+    <button type="button" class="lcw-fab" id="lcwFab" aria-label="Buka chat dengan admin">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path
+                d="M4 4h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3.5V15H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm16 5h-1.5v4A3.5 3.5 0 0 1 15 16.5H10.5l.9.8a2 2 0 0 0 1.3.5H17l3.5 3v-3H20a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2z" />
+        </svg>
+        <span class="lcw-badge" id="lcwBadge" hidden>0</span>
+    </button>
+
+    <div class="lcw-panel" id="lcwPanel" hidden>
+        <div class="lcw-head">
+            <div>
+                <div class="lcw-title" id="lcwTitle">Chat dengan Admin</div>
+                <div class="lcw-sub" id="lcwPresence"><i class="dot"></i><span>Offline</span></div>
+            </div>
+            <button type="button" class="lcw-close" id="lcwClose" aria-label="Tutup chat">✕</button>
+        </div>
+        <div class="lc" id="lcwRoot">
+            <div data-lc="list" class="lc-list"></div>
+            <div data-lc="composer" class="lc-composer"></div>
+        </div>
+    </div>
+</div>
+
+<script src="{{ asset('js/livechat.js') }}"></script>
+<script>
+(function() {
+    var U = {
+        msgs: @json(route('livechat.messages')),
+        send: @json(route('livechat.send')),
+        products: @json(route('livechat.products')),
+        edit: @json(route('livechat.edit', '__ID__')),
+        del: @json(route('livechat.delete', '__ID__'))
+    };
+
+    // ===== Token tamu (disimpan di browser, dipakai server untuk mengenali tamu) =====
+    function makeToken() {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+    }
+
+    var GUEST = '';
+    try {
+        GUEST = localStorage.getItem('lc_guest_token') || '';
+        if (!GUEST) {
+            GUEST = makeToken();
+            localStorage.setItem('lc_guest_token', GUEST);
+        }
+    } catch (e) {
+        GUEST = makeToken(); // localStorage diblokir: token hanya berlaku selama halaman terbuka
+    }
+
+    // tambahkan ?guest=... ke URL (aman untuk URL yang sudah punya query)
+    function withGuest(url) {
+        return url + (url.indexOf('?') === -1 ? '?' : '&') + 'guest=' + encodeURIComponent(GUEST);
+    }
+
+    var fab = document.getElementById('lcwFab'),
+        panel = document.getElementById('lcwPanel'),
+        badge = document.getElementById('lcwBadge'),
+        pres = document.getElementById('lcwPresence'),
+        open = false;
+
+    function ago(s) {
+        if (s == null) return 'Offline';
+        if (s < 60) return 'Terakhir aktif baru saja';
+        if (s < 3600) return 'Terakhir aktif ' + Math.floor(s / 60) + ' menit lalu';
+        if (s < 86400) return 'Terakhir aktif ' + Math.floor(s / 3600) + ' jam lalu';
+        return 'Terakhir aktif beberapa hari lalu';
+    }
+
+    var core = LiveChat.create({
+        mode: 'customer',
+        root: document.getElementById('lcwRoot'),
+        csrf: @json(csrf_token()),
+        interval: function() {
+            return open ? 2000 : 6000;
+        },
+        urls: {
+            messages: function(after) {
+                return withGuest(U.msgs + '?after=' + after + '&open=' + (open ? 1 : 0));
+            },
+            send: function() {
+                return withGuest(U.send);
+            },
+            products: function(q) {
+                return withGuest(U.products + '?q=' + encodeURIComponent(q || ''));
+            },
+            edit: function(id) {
+                return withGuest(U.edit.replace('__ID__', id));
+            },
+            del: function(id) {
+                return withGuest(U.del.replace('__ID__', id));
+            }
+        },
+        onPoll: function(j) {
+            var n = open ? 0 : (j.unread || 0);
+            badge.hidden = n < 1;
+            badge.textContent = n > 99 ? '99+' : n;
+
+            if (j.admin) {
+                document.getElementById('lcwTitle').textContent = j.admin.name || 'Chat dengan Admin';
+                pres.classList.toggle('online', !!j.admin.online);
+                pres.querySelector('span').textContent = j.admin.online ? 'Online' : ago(j.admin
+                    .seconds_ago);
+            }
+        }
+    });
+    core.start();
+
+    function toggle(show) {
+        open = show;
+        panel.hidden = !show;
+        if (show) {
+            badge.hidden = true;
+            core.kick(); // langsung tandai pesan admin sebagai dibaca
+            core.scrollBottom();
+            core.focus();
+        }
+    }
+    fab.addEventListener('click', function() {
+        toggle(panel.hidden);
+    });
+    document.getElementById('lcwClose').addEventListener('click', function() {
+        toggle(false);
+    });
+})();
+</script>
+@endif
