@@ -135,6 +135,7 @@ Route::prefix('livechat')->middleware('throttle:240,1')->group(function () {
     Route::get('/messages', [LiveChatController::class, 'customerMessages'])->name('livechat.messages');
     Route::get('/products', [LiveChatController::class, 'products'])->name('livechat.products');
     Route::post('/send', [LiveChatController::class, 'customerSend'])->middleware('throttle:30,1')->name('livechat.send');
+    Route::post('/clear', [LiveChatController::class, 'customerClear'])->name('livechat.clear');
     Route::match(['put', 'post'], '/{id}/edit', [LiveChatController::class, 'customerEdit'])->name('livechat.edit');
     Route::match(['delete', 'post'], '/{id}/delete', [LiveChatController::class, 'customerDelete'])->name('livechat.delete');
     Route::post('/{id}/flag', [LiveChatController::class, 'customerFlag'])->name('livechat.flag');
@@ -169,6 +170,8 @@ Route::middleware(['auth', 'isAdmin'])->group(function () {
     Route::get('backend/pesanan', [PesananController::class, 'index'])->name('admin.pesanan.index');
     Route::match(['post', 'patch'], 'backend/pesanan/{id}/update', [PesananController::class, 'update'])->name('admin.pesanan.update');
     Route::get('backend/pesanan/{id}/detail', [PesananController::class, 'detail'])->name('admin.pesanan.detail');
+    Route::post('backend/pesanan/{id}/foto-bukti', [PesananController::class, 'uploadFotoBukti'])->name('admin.pesanan.foto-bukti.store');
+    Route::delete('backend/pesanan/foto-bukti/{id}', [PesananController::class, 'hapusFotoBukti'])->name('admin.pesanan.foto-bukti.destroy');
     Route::get('backend/pesanan/{id}/cetak', [PesananController::class, 'cetak'])->name('admin.pesanan.cetak');
 
     // Live chat - sisi admin
@@ -181,6 +184,8 @@ Route::middleware(['auth', 'isAdmin'])->group(function () {
     Route::post('/backend/livechat/{customer}/archive', [LiveChatController::class, 'adminArchive'])->name('backend.livechat.archive');
     Route::post('/backend/livechat/{customer}/block', [LiveChatController::class, 'adminBlock'])->name('backend.livechat.block');
     Route::match(['delete', 'post'], '/backend/livechat/{customer}/delete-conversation', [LiveChatController::class, 'adminDeleteConversation'])->name('backend.livechat.conversation.delete');
+
+    Route::get('livechat/customer/{customer}/info', [LiveChatController::class, 'adminCustomerInfo'])->name('backend.livechat.info');
     Route::match(['put', 'post'], '/backend/livechat/message/{id}/edit', [LiveChatController::class, 'adminEdit'])->name('backend.livechat.edit');
     Route::match(['delete', 'post'], '/backend/livechat/message/{id}/delete', [LiveChatController::class, 'adminDelete'])->name('backend.livechat.delete');
     Route::post('/backend/livechat/message/{id}/flag', [LiveChatController::class, 'adminFlag'])->name('backend.livechat.flag');
@@ -221,6 +226,7 @@ Route::middleware(['auth', 'isCustomer'])
 
         Route::get('pesanan/{id}/tracking', [PesananController::class, 'tracking'])
             ->name('pesanan.tracking');
+        Route::post('pesanan/{id}/ulasan', [RiwayatController::class, 'simpanUlasan'])->name('pesanan.ulasan');
     });
 
 // 6. ROUTE CUSTOMER (akun & keranjang order) — middleware disamakan dgn group 5
@@ -248,3 +254,19 @@ Route::middleware(['auth', 'isCustomer'])->group(function () {
     Route::post('cart/pilih-pengiriman', [OrderController::class, 'pilihPengiriman'])
         ->name('order.pilihPengiriman');
 });
+
+Route::post('/livechat/customer/orders/{id}/confirm-address', [LiveChatController::class, 'customerConfirmAddress'])
+    ->name('livechat.customer.confirm-address');
+
+Route::post('/livechat/customer/orders/{id}/cancel', [LiveChatController::class, 'customerCancelOrder'])
+    ->name('livechat.customer.cancel-order');
+
+// Sinkron status pembayaran Midtrans saat customer kembali dari halaman bayar
+Route::get('/customer/checkout/selesai-midtrans', [OrderController::class, 'selesaiMidtrans'])
+    ->middleware('auth')
+    ->name('customer.checkout.selesaiMidtrans');
+
+// Penilaian logistik dari modal lacak paket
+Route::post('/customer/pesanan/{id}/rating-logistik', [PesananController::class, 'beriRatingLogistik'])
+    ->middleware('auth')
+    ->name('customer.pesanan.rating');

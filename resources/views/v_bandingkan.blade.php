@@ -238,7 +238,7 @@
                 <div class="bd-row" style="display:block;">
                     <span style="display:block; margin-bottom:4px;">Deskripsi</span>
                     <span
-                        style="text-align:left; display:block; font-weight:400; color:#777; font-size:12px;">{{ Str::limit($item->deskripsi ?? '-', 80) }}</span>
+                        style="text-align:left; display:block; font-weight:400; color:#777; font-size:12px;">{{ Str::limit(trim(html_entity_decode(strip_tags($item->detail ?? ''))), 80) ?: '-' }}</span>
                 </div>
 
                 <a href="{{ route('produk.detail', $item->id) }}" style="display:block; margin-top:14px;">

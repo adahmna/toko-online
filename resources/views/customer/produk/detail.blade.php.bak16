@@ -1,0 +1,84 @@
+@extends('v_layouts.app')
+@section('content')
+<style>
+#product-main-view .product-view img {
+    width: 100%;
+    max-height: 380px;
+    object-fit: contain;
+}
+
+#product-view .product-view img,
+#product-imgs .product-wrap img {
+    width: 100%;
+    height: 70px;
+    object-fit: cover;
+}
+</style>
+<div class="col-md-5">
+    <div id="product-main-view">
+        <div class="product-view">
+            <img src="{{ asset('storage/img-produk/thumb_lg_' . $row->foto) }}" alt="{{ $row->nama_produk }}">
+        </div>
+        @foreach ($fotoProdukTambahan as $item)
+        @if ($item->produk_id == $row->id)
+        <div class="product-view">
+            <img src="{{ asset('storage/img-produk/' . $item->foto) }}" alt="Foto Tambahan">
+        </div>
+        @endif
+        @endforeach
+    </div>
+    <div id="product-view">
+        <div class="product-view">
+            <img src="{{ asset('storage/img-produk/thumb_sm_' . $row->foto) }}" alt="">
+        </div>
+        @foreach ($fotoProdukTambahan as $item)
+        @if ($item->produk_id == $row->id)
+        <div class="product-view">
+            <img src="{{ asset('storage/img-produk/' . $item->foto) }}" alt="">
+        </div>
+        @endif
+        @endforeach
+    </div>
+</div>
+<div class="col-md-1">
+    <div id="product-imgs">
+        <div class="product-wrap">
+            <img src="{{ asset('storage/img-produk/thumb_sm_' . $row->foto) }}" alt="">
+        </div>
+        @foreach ($fotoProdukTambahan as $item)
+        @if ($item->produk_id == $row->id)
+        <div class="product-wrap">
+            <img src="{{ asset('storage/img-produk/' . $item->foto) }}" alt="">
+        </div>
+        @endif
+        @endforeach
+    </div>
+</div>
+<div class="col-md-6">
+    <div class="product-details">
+        <div class="product-label">
+            <span>Kategori</span>
+            <span class="sale">{{ $row->kategori->nama_kategori }}</span>
+        </div>
+        <h2 class="product-name">{{ $row->nama_produk }}</h2>
+        <div>
+            <h3 class="product-price">Rp. {{ number_format($row->harga, 0, ',', '.') }}</h3>
+        </div>
+        <p><strong>Berat:</strong> {{ $row->berat }} Gram</p>
+        <p><strong>Stok:</strong> {{ $row->stok }}</p>
+        <p>{!! $row->detail !!}</p>
+        <div class="product-btns">
+            <form action="{{ route('order.addToCart', $row->id) }}" method="POST">
+                @csrf
+                <div class="qty-input">
+                    <span class="text-uppercase">QTY: </span>
+                    <input class="input" type="number" name="jumlah" value="1" min="1" max="{{ $row->stok }}">
+                </div>
+                <button type="submit" class="primary-btn add-to-cart" {{ $row->stok == 0 ? 'disabled' : '' }}>
+                    <i class="fa fa-shopping-cart"></i> {{ $row->stok == 0 ? 'Stok Habis' : 'Pesan' }}
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+@endsection

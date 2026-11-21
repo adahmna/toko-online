@@ -8,6 +8,35 @@
 
 <link rel="stylesheet" href="{{ asset('css/livechat.css') }}">
 
+{{-- Perkecil widget chat di HP (override livechat.css; ubah angka di bawah kalau mau lebih kecil/besar) --}}
+<style>
+@media (max-width: 767px) {
+    #lcw .lcw-panel {
+        top: auto !important;
+        left: auto !important;
+        right: 12px !important;
+        bottom: 72px !important;
+        width: min(290px, calc(100vw - 24px)) !important;
+        height: min(360px, 50vh) !important;
+        max-width: calc(100vw - 24px) !important;
+        max-height: calc(100vh - 96px) !important;
+        border-radius: 14px !important;
+    }
+
+    #lcw .lcw-fab {
+        width: 46px !important;
+        height: 46px !important;
+        right: 12px !important;
+        bottom: 16px !important;
+    }
+
+    #lcw .lcw-fab svg {
+        width: 22px !important;
+        height: 22px !important;
+    }
+}
+</style>
+
 <div id="lcw">
     <button type="button" class="lcw-fab" id="lcwFab" aria-label="Buka chat dengan admin">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -40,7 +69,9 @@
         send: @json(route('livechat.send')),
         products: @json(route('livechat.products')),
         edit: @json(route('livechat.edit', '__ID__')),
-        del: @json(route('livechat.delete', '__ID__'))
+        del: @json(route('livechat.delete', '__ID__')),
+        confirm: @json(route('livechat.customer.confirm-address', '__ID__')),
+        cancel: @json(route('livechat.customer.cancel-order', '__ID__'))
     };
 
     // ===== Token tamu (disimpan di browser, dipakai server untuk mengenali tamu) =====
@@ -101,6 +132,13 @@
             },
             del: function(id) {
                 return withGuest(U.del.replace('__ID__', id));
+            },
+            confirm: function(id) {
+                return withGuest(U.confirm.replace('__ID__', id));
+            },
+            shop: @json(url('/beranda')),
+            cancel: function(id) {
+                return withGuest(U.cancel.replace('__ID__', id));
             }
         },
         onPoll: function(j) {

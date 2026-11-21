@@ -188,6 +188,139 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
     background: #f4663f;
     color: #fff;
 }
+/* ===== panel info kontak ===== */
+.lcx-chatcard {
+    position: relative;
+    overflow: hidden;
+}
+
+.lcx-who {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.lcx-who:hover {
+    opacity: .8;
+}
+
+.lcx-info {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 340px;
+    max-width: 100%;
+    background: #fff;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, .12);
+    transform: translateX(100%);
+    transition: transform .25s ease;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+}
+
+.lcx-info.open {
+    transform: translateX(0);
+}
+
+.lcx-info-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.lcx-info-close {
+    border: 0;
+    background: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #888;
+}
+
+.lcx-info-body {
+    padding: 24px 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.lcx-info-load {
+    text-align: center;
+    color: #888;
+    padding: 30px 0;
+}
+
+.lcx-photo {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    margin: 0 auto 12px;
+    background: #f4663f center/cover no-repeat;
+    color: #fff;
+    font-size: 48px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lcx-pname {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 4px;
+}
+
+.lcx-psub {
+    text-align: center;
+    margin-bottom: 18px;
+    min-height: 4px;
+}
+
+.lcx-row {
+    padding: 10px 0;
+    border-top: 1px solid #f0f0f0;
+}
+
+.lcx-row small {
+    display: block;
+    color: #888;
+    font-size: 12px;
+    margin-bottom: 2px;
+}
+
+.lcx-row div {
+    color: #2c3e50;
+    font-size: 14px;
+    word-break: break-word;
+}
+
+/* tombol ke pesan terbaru */
+.lcx-tobottom {
+    position: fixed;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+    color: #555;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .28);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.lcx-tobottom.show { display: flex; }
+.lcx-tobottom:hover { background: #f5f5f5; color: #f4663f; }
 </style>
 
 <h4 style="margin:0 0 14px;color:#2c3e50;font-weight:600">Live Chat Customer</h4>
@@ -207,9 +340,17 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
         </div>
     </div>
 
-    <div class="lca-card">
+    <div class="lca-card lcx-chatcard">
         <div class="lca-pane" id="lcaPane">
             <div class="lca-empty" style="margin:auto">Pilih percakapan di sebelah kiri untuk mulai membalas.</div>
+        </div>
+
+        <div class="lcx-info" id="lcxInfo">
+            <div class="lcx-info-head">
+                <button type="button" class="lcx-info-close" id="lcxInfoClose" aria-label="Tutup">&times;</button>
+                <span>Info Kontak</span>
+            </div>
+            <div class="lcx-info-body" id="lcxInfoBody"></div>
         </div>
     </div>
 </div>
@@ -229,7 +370,8 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
         pin: @json(route('backend.livechat.pin', '__C__')),
         archive: @json(route('backend.livechat.archive', '__C__')),
         block: @json(route('backend.livechat.block', '__C__')),
-        delConv: @json(route('backend.livechat.conversation.delete', '__C__'))
+        delConv: @json(route('backend.livechat.conversation.delete', '__C__')),
+        info: @json(route('backend.livechat.info', '__C__'))
     };
 
     var PLACEHOLDER =
@@ -241,6 +383,9 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
         elTotal = document.getElementById('lcaTotal'),
         elArch = document.getElementById('lcxArchCount'),
         elBlk = document.getElementById('lcxBlkCount');
+    var elInfo = document.getElementById('lcxInfo'),
+        elInfoBody = document.getElementById('lcxInfoBody'),
+        infoFor = null;
     var current = null,
         core = null,
         convTimer = null,
@@ -439,7 +584,7 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
             deleted: false
         };
 
-        var html = '';
+        var html = '<button type="button" data-a="info">\uD83D\uDC64 Info kontak</button>';
         if (!st.archived) {
             html += '<button type="button" data-a="pin">' + (st.pinned ? '📌 Lepas sematan' : '📌 Sematkan') +
                 '</button>';
@@ -474,6 +619,7 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
             if (!b) return;
             e.stopPropagation();
             closeMenu();
+            if (b.dataset.a === 'info') openInfo(id);
             if (b.dataset.a === 'pin') doPin(id);
             if (b.dataset.a === 'archive') doArchive(id);
             if (b.dataset.a === 'block') doBlock(id);
@@ -568,8 +714,96 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
             .catch(fail);
     }
 
+    /* ---------- panel info kontak ---------- */
+    function closeInfo() {
+        elInfo.classList.remove('open');
+        infoFor = null;
+    }
+
+    function dateLong(iso) {
+        if (!iso) return '-';
+        return new Date(iso).toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+    }
+
+    function infoRow(label, val) {
+        return '<div class="lcx-row"><small>' + label + '</small><div>' +
+            esc(val == null || val === '' ? '-' : val) + '</div></div>';
+    }
+
+    function renderInfo(d) {
+        var gone = d.type === 'deleted';
+
+        var photo = d.photo ?
+            '<div class="lcx-photo" style="background-image:url(\'' + esc(d.photo) + '\')"></div>' :
+            '<div class="lcx-photo">' + esc(initial(d.name, gone)) + '</div>';
+
+        var badges = '';
+        if (d.type === 'guest') badges += '<span class="lcx-badge grey">Tamu</span>';
+        if (gone) badges += '<span class="lcx-badge grey">Dihapus</span>';
+        if (d.blocked) badges += '<span class="lcx-badge">Diblokir</span>';
+
+        var html = photo +
+            '<div class="lcx-pname' + (gone ? ' lcx-gone' : '') + '">' + esc(d.name) + '</div>' +
+            '<div class="lcx-psub">' + badges + '</div>';
+
+        if (d.type === 'customer') {
+            html += infoRow('Email', d.email) +
+                infoRow('No. HP', d.phone) +
+                infoRow('Alamat', d.address) +
+                infoRow('Bergabung sejak', dateLong(d.joined)) +
+                infoRow('Total pesanan', d.total_orders) +
+                infoRow('Pesanan terakhir', d.last_order ? dateLong(d.last_order) : '-');
+        } else if (d.type === 'guest') {
+            html += infoRow('Status', 'Pengunjung belum login, belum punya data akun');
+        } else {
+            if (d.email) html += infoRow('Email terakhir', d.email);
+            html += infoRow('Status', 'Akun customer sudah dihapus oleh admin');
+        }
+
+        html += infoRow('Mulai chat', dateLong(d.first_chat)) +
+            infoRow('Total pesan', d.total_messages);
+
+        if (d.blocked && d.blocked_reason) html += infoRow('Alasan blokir', d.blocked_reason);
+
+        elInfoBody.innerHTML = html;
+    }
+
+    function openInfo(id) {
+        infoFor = id;
+        elInfo.classList.add('open');
+        elInfoBody.innerHTML = '<div class="lcx-info-load">Memuat...</div>';
+
+        fetch(U.info.replace('__C__', id), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            })
+            .then(function(r) {
+                return r.json().then(function(j) {
+                    if (!r.ok) throw new Error(j.message || 'Gagal memuat data.');
+                    return j;
+                });
+            })
+            .then(function(d) {
+                if (infoFor === id) renderInfo(d);
+            })
+            .catch(function(e) {
+                if (infoFor === id) elInfoBody.innerHTML =
+                    '<div class="lcx-info-load">' + esc(e.message || 'Gagal memuat data.') + '</div>';
+            });
+    }
+
+    document.getElementById('lcxInfoClose').addEventListener('click', closeInfo);
+
     /* ---------- panel chat ---------- */
     function closePane() {
+        closeInfo();
         if (core) {
             core.destroy();
             core = null;
@@ -596,6 +830,7 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
     }
 
     function openConv(id, name) {
+        closeInfo();
         if (core) {
             core.destroy();
             core = null;
@@ -609,9 +844,9 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
         };
 
         elPane.innerHTML =
-            '<div class="lca-head"><span' + (gone ? ' class="lcx-gone"' : '') + '>' + esc(shownName) +
+            '<div class="lca-head"><span class="lcx-who" data-info="' + id + '" title="Lihat info kontak"><span class="lca-av">' + esc(initial(shownName, gone)) + '</span><span' + (gone ? ' class="lcx-gone"' : '') + '>' + esc(shownName) +
             '<span class="lcx-badge lcx-blocked" hidden>Diblokir</span>' +
-            (gone ? '<span class="lcx-badge grey">Dihapus</span>' : '') + '</span>' +
+            (gone ? '<span class="lcx-badge grey">Dihapus</span>' : '') + '</span></span>' +
             '<button type="button" class="lcx-more" data-more="' + id +
             '" aria-label="Opsi percakapan">⋮</button></div>' +
             '<div class="lc"><div data-lc="list" class="lc-list"></div><div data-lc="composer" class="lc-composer"></div></div>';
@@ -693,6 +928,12 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
 
     // tombol ⋮ di header panel chat
     elPane.addEventListener('click', function(e) {
+        var who = e.target.closest('[data-info]');
+        if (who) {
+            e.stopPropagation();
+            openInfo(+who.dataset.info);
+            return;
+        }
         var more = e.target.closest('[data-more]');
         if (more) {
             e.stopPropagation();
@@ -768,7 +1009,7 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
 
     // tekan Esc untuk menutup menu
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeMenu();
+        if (e.key === 'Escape') { closeMenu(); closeInfo(); }
     });
 
     [].forEach.call(document.querySelectorAll('.lcx-tab'), function(btn) {
@@ -784,6 +1025,62 @@ $lcStickers = collect(glob(public_path('stickers/*.*')) ?: [])
     });
 
     loadConvs();
+})();
+</script>
+
+<script>
+(function() {
+    var pane = document.getElementById('lcaPane');
+    if (!pane) return;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'lcxToBottom';
+    btn.className = 'lcx-tobottom';
+    btn.title = 'Ke pesan terbaru';
+    btn.innerHTML = '<i class="fas fa-chevron-down"></i>';
+    document.body.appendChild(btn);
+
+    function getList() { return pane.querySelector('[data-lc="list"]'); }
+    function scrollable(l) { return l.scrollHeight > l.clientHeight + 1; }
+
+    function update() {
+        var l = getList();
+        if (!l || !l.offsetParent) { btn.classList.remove('show'); return; }
+
+        var far;
+        if (scrollable(l)) {
+            far = (l.scrollHeight - l.scrollTop - l.clientHeight) > 200;
+        } else {
+            far = l.getBoundingClientRect().bottom > window.innerHeight + 100;
+        }
+
+        var comp = pane.querySelector('[data-lc="composer"]');
+        var ref = (comp && comp.offsetParent) ? comp : l;
+        var rr = ref.getBoundingClientRect();
+        var lr = l.getBoundingClientRect();
+        var visible = lr.bottom > 0 && lr.top < window.innerHeight;
+
+        btn.style.right = Math.max(8, window.innerWidth - lr.right + 16) + 'px';
+        btn.style.bottom = Math.max(8, window.innerHeight - rr.top + 12) + 'px';
+        btn.classList.toggle('show', far && visible);
+    }
+
+    btn.addEventListener('click', function() {
+        var l = getList();
+        if (!l) return;
+        if (scrollable(l)) {
+            l.scrollTo({ top: l.scrollHeight, behavior: 'smooth' });
+        }
+        var comp = pane.querySelector('[data-lc="composer"]');
+        var target = (comp && comp.offsetParent) ? comp : l;
+        target.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+
+    // scroll event tidak bubble, jadi pakai capture supaya scroll di dalam list & halaman sama-sama tertangkap
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    setInterval(update, 500); // ikut berubah saat ganti percakapan / ada pesan baru
 })();
 </script>
 @endsection

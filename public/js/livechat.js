@@ -87,7 +87,15 @@
       '.lc-x-item .tx b{display:block;font-size:13px;font-weight:600;color:#2c3e50;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
       '.lc-x-item .tx span{font-size:13px;color:#e0452b;font-weight:700}' +
       '.lc-x-item button{border:0;background:#f4663f;color:#fff;border-radius:14px;padding:5px 12px;font-size:12px;cursor:pointer;flex:none}' +
-      '.lc-x-empty{padding:18px;text-align:center;color:#999;font-size:13px}';
+      '.lc-x-empty{padding:18px;text-align:center;color:#999;font-size:13px}' +
+      '/* lc-wa-toggle */' +
+      '[data-lc=composer] .lc-send{display:none!important}' +
+      '[data-lc=composer].has-content .lc-send{display:inline-flex!important;align-items:center;justify-content:center}' +
+      '[data-lc=composer].has-content .lc-mic{display:none!important}' +
+      '.lc-bot-note{display:none!important}' +
+      '.lc-who-note{font-weight:600}' +
+      '.lc-who-note.is-admin{color:#2e7d32}' +
+      '.lc-who-note.is-bot{color:#888}';
     document.head.appendChild(s);
   }
 
@@ -100,6 +108,10 @@
       case 'voice':   return '🎤 Pesan suara' + (m.attachment && m.attachment.duration ? ' (' + mmss(m.attachment.duration) + ')' : '');
       case 'audio':   return '🎵 ' + ((m.attachment && m.attachment.name) || 'Audio');
       case 'file':    return '📎 ' + ((m.attachment && m.attachment.name) || 'File');
+      case 'order_confirm': return 'Konfirmasi pesanan';
+      case 'order_summary': return 'Ringkasan pesanan';
+      case 'bot_faq': return 'Bantuan';
+      case 'order_cancel': return 'Pembatalan pesanan';
       case 'product': return '🛍️ ' + ((m.product && m.product.name) || 'Produk');
       default:        return cap.length > 80 ? cap.slice(0, 80) + '…' : cap;
     }
@@ -117,7 +129,96 @@
            '</a>';
   }
 
-  function bodyHtml(m) {
+  let SHOP_URL = '#';
+
+  const FAQ_ITEMS = [
+    'Kapan pesanan saya akan dikirim?',
+    'Di mana pesanan saya?',
+    'Bisakah saya mengubah alamat pesanan?',
+    'Bisakah saya membatalkan pesanan saya?',
+    'Bagaimana cara mengembalikan produk?'
+  ];
+  const CHIPS = ['Ubah alamat', 'Minta pengembalian dana', 'Lacak pesanan'];
+  // FAQ untuk customer yang belum punya pesanan (harus sama persis dengan GENERAL_FAQ_KEYS di controller)
+  const FAQ_NEW = [
+    'Bagaimana cara memesan produk?',
+    'Berapa lama pengiriman barang?',
+    'Ekspedisi apa saja yang tersedia?',
+    'Metode pembayaran apa saja?',
+    'Apakah produk masih tersedia?',
+    'Bagaimana jika barang rusak atau tidak sesuai?'
+  ];
+  let HAS_ORDER = false;
+
+  function osumHtml(m) {
+    const o = m.order;
+    if (!o || o.missing) return '';
+    return '<div class="lc-osum">' +
+      '<div class="lc-osum-top"><b>BSI Cyber Store</b><span class="lc-osum-st">' + esc(o.status || '') + '</span></div>' +
+      '<div class="lc-order-row">' +
+        '<span class="lc-order-thumb"' + (o.image ? ' style="background-image:url(\'' + esc(o.image) + '\')"' : '') + '></span>' +
+        '<div><div class="lc-order-name">' + esc(o.product) + '</div>' +
+        '<div class="lc-order-sub">' + o.items + ' item &middot; ' + rupiah(o.total) + '</div></div></div>' +
+      '<div class="lc-osum-foot">Silakan pilih produk lain <a href="' + esc(SHOP_URL) + '">di sini</a>.</div></div>';
+  }
+
+  function cancelAction(o, mode) {
+    if (mode !== 'customer') return '';
+    if (o.phase === 'unpaid') return '<button type="button" class="lc-cancel-now">Batalkan pesanan</button>';
+    if (o.phase === 'processing') return '<button type="button" class="lc-cancel-btn" data-code="' + esc(o.code) + '">Ajukan pembatalan</button>';
+    return '<div class="lc-order-wait">' + ((o.phase === 'cancelled' || o.phase === 'expired') ? 'Pesanan sudah dibatalkan' : 'Pesanan tidak bisa dibatalkan') + '</div>';
+  }
+
+  function cancelHtml(m, mode) {
+    const o = m.order;
+    if (!o || o.missing) return '';
+    return '<div class="lc-osum">' +
+      '<div class="lc-osum-top"><b>Batalkan pesanan?</b></div>' +
+      '<div class="lc-order-row">' +
+        '<span class="lc-order-thumb"' + (o.image ? ' style="background-image:url(\'' + esc(o.image) + '\')"' : '') + '></span>' +
+        '<div><div class="lc-order-name">' + esc(o.product) + '</div>' +
+        '<div class="lc-order-sub">' + o.items + ' item &middot; ' + rupiah(o.total) + '</div></div></div>' +
+      '<div class="lc-osum-foot">' + (o.phase === 'unpaid' ? 'Pesanan belum dibayar, jadi pembatalan langsung diproses.' : 'Pembatalan diajukan ke admin dan diproses setelah status pesanan dicek.') + '</div>' +
+      cancelAction(o, mode) +
+      '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+  }
+
+  function faqHtml(m) {
+    return '<div class="lc-faq"><div class="lc-faq-title">' + esc(m.message || 'Ada yang bisa kami bantu hari ini?') + '</div>' +
+      (HAS_ORDER ? FAQ_ITEMS : FAQ_NEW).map(q => '<button type="button" class="lc-faq-item" data-q="' + esc(q) + '"><span>' + esc(q) + '</span><span>&rsaquo;</span></button>').join('') +
+      '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+  }
+
+  function orderHtml(m, mode) {
+    const o = m.order;
+    if (!o || o.missing) {
+      return '<div class="lc-order"><div class="lc-order-head">Konfirmasi pesanan</div><div class="lc-order-sub">Data pesanan tidak tersedia</div></div>';
+    }
+    let foot;
+    if (m.address_confirmed) foot = '<div class="lc-order-done">&#10004; Alamat sudah dikonfirmasi</div>';
+    else if (mode === 'customer') foot = '<button type="button" class="lc-order-btn">Konfirmasi alamat</button>';
+    else foot = '<div class="lc-order-wait">Menunggu konfirmasi alamat</div>';
+    return '<div class="lc-order">' +
+      '<div class="lc-order-head">Konfirmasi pesanan</div>' +
+      '<div class="lc-order-row">' +
+        '<span class="lc-order-thumb"' + (o.image ? ' style="background-image:url(\'' + esc(o.image) + '\')"' : '') + '></span>' +
+        '<div><div class="lc-order-name">' + esc(o.product) + '</div>' +
+        '<div class="lc-order-sub">' + o.items + ' item &middot; ' + rupiah(o.total) + '</div></div></div>' +
+      '<div class="lc-order-meta">' +
+        '<div><small>ID Pesanan</small><span>' + esc(o.code) + '</span></div>' +
+        '<div><small>Telepon</small><span>' + esc(o.phone || '-') + '</span></div>' +
+        '<div><small>Alamat</small><span>' + esc(o.address || '-') + '</span></div></div>' +
+      foot + '</div>';
+  }
+
+  function bodyHtml(m, mode) {
+    if (!m.deleted && m.type === 'order_confirm') {
+      return (m.message ? '<div class="lc-text-out">' + esc(m.message) + '</div>' : '') + orderHtml(m, mode);
+    }
+    if (!m.deleted && m.type === 'bot_reply') return '<div class="lc-bot-text">' + esc(m.message) + '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+    if (!m.deleted && m.type === 'order_cancel') return cancelHtml(m, mode);
+    if (!m.deleted && m.type === 'order_summary') return osumHtml(m);
+    if (!m.deleted && m.type === 'bot_faq') return faqHtml(m);
     if (m.deleted) return '<span class="lc-deleted">🚫 Pesan ini telah dihapus</span>';
     const a = m.attachment;
     let h = '';
@@ -155,6 +256,7 @@
   function create(cfg) {
     injectStyle();
 
+    SHOP_URL = (cfg.urls && cfg.urls.shop) || '#';
     const root = cfg.root;
     const mine = cfg.mode === 'admin' ? 'admin' : 'customer';
     const list = root.querySelector('[data-lc=list]');
@@ -176,6 +278,7 @@
       '<div class="lc-banner" hidden></div>' +
       '<div class="lc-preview" hidden></div>' +
       '<div class="lc-panel" hidden></div>' +
+      (cfg.mode === 'customer' ? '<div class="lc-chips" style="display:none">' + CHIPS.map(c => '<button type="button" class="lc-chip" data-q="' + esc(c) + '">' + esc(c) + '</button>').join('') + '</div>' : '') +
       '<div class="lc-row">' +
         '<button type="button" class="lc-btn lc-attach" title="Lampirkan">📎</button>' +
         (canProduct ? '<button type="button" class="lc-btn lc-prod" title="Kirim produk">🛍️</button>' : '') +
@@ -200,7 +303,7 @@
     const inDoc = $('.lc-in-doc'), inImg = $('.lc-in-img'), inCam = $('.lc-in-cam'), inAud = $('.lc-in-aud');
     const rowEl = $('.lc-row'), recEl = $('.lc-rec');
 
-    if (!canRecord) comp.classList.add('no-rec');
+    // tombol rekam tetap tampil; pesan error ditampilkan saat ditekan
 
     /* ---------- helpers ---------- */
     function toast(t) {
@@ -306,7 +409,10 @@
         quote = '<div class="lc-quote" data-goto="' + m.reply.id + '"><b>' + (m.reply.sender === mine ? 'Anda' : esc(peerLabel(m.reply))) + '</b>' +
                 '<span>' + (m.reply.deleted ? '🚫 Pesan dihapus' : esc(m.reply.message)) + '</span></div>';
       }
-      const meta = (m.edited ? '<em>diedit</em> ' : '') + timeStr(m.created_at) + (own && !m.deleted ? ' ' + tick(m.status) : '');
+      const whoNote = (m.sender === 'admin' && !m.deleted)
+        ? '<span class="lc-who-note' + (m.is_bot ? ' is-bot' : ' is-admin') + '">' + (m.is_bot ? 'Dikirim oleh chatbot' : 'Admin') + '</span> &middot; '
+        : '';
+      const meta = whoNote + (m.edited ? '<em>diedit</em> ' : '') + timeStr(m.created_at) + (own && !m.deleted ? ' ' + tick(m.status) : '');
 
       // nama admin di atas isi bubble (hanya terlihat oleh customer)
       const who = (cfg.mode === 'customer' && !own && !m.deleted && m.type !== 'sticker')
@@ -314,7 +420,7 @@
         : '';
 
       el.innerHTML =
-        '<div class="lc-line"><div class="lc-bubble">' + who + quote + bodyHtml(m) + '</div>' +
+        '<div class="lc-line"><div class="lc-bubble">' + who + quote + bodyHtml(m, cfg.mode) + '</div>' +
         '<button type="button" class="lc-more" data-more aria-label="Opsi pesan">⌄</button></div>' +
         '<div class="lc-meta">' + meta + '</div>';
 
@@ -361,8 +467,8 @@
       Object.keys(states).forEach(k => {
         const id = +k, s = states[k], m = msgs.get(id);
         if (!m) return;
-        if (m.status === s.status && m.message === s.message && m.edited === s.edited && m.deleted === s.deleted) return;
-        Object.assign(m, { status: s.status, message: s.message, edited: s.edited, deleted: s.deleted, delivered_at: s.delivered_at, read_at: s.read_at });
+        if (m.status === s.status && m.message === s.message && m.edited === s.edited && m.deleted === s.deleted && !!m.address_confirmed === !!s.address_confirmed) return;
+        Object.assign(m, { status: s.status, message: s.message, edited: s.edited, deleted: s.deleted, delivered_at: s.delivered_at, read_at: s.read_at, address_confirmed: s.address_confirmed });
         if (s.deleted) { m.type = 'text'; m.attachment = null; m.product = null; m.reply = null; }
         refresh(m);
       });
@@ -375,8 +481,16 @@
       try {
         const j = await api(cfg.urls.messages(lastId));
         if (destroyed) return;
+        if (j.reset) { stopPlayer(); closeMenu(); msgs.clear(); list.innerHTML = ''; lastDay = null; stick = true; }
+        const ho = !!j.has_order;
+        if (ho !== HAS_ORDER) {
+          HAS_ORDER = ho;
+          msgs.forEach(x => { if (x.type === 'bot_faq') refresh(x); });
+        }
         (j.messages || []).forEach(m => addMsg(m));
         applyStates(j.states || {});
+        const chipsEl = comp.querySelector('.lc-chips');
+        if (chipsEl) chipsEl.style.display = j.has_order ? '' : 'none';
         if (cfg.onPoll) cfg.onPoll(j);
       } catch (e) { /* diam, coba lagi di putaran berikutnya */ }
       finally { polling = false; }
@@ -489,13 +603,60 @@
         if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('flash'); setTimeout(() => t.classList.remove('flash'), 1200); }
         return;
       }
-      const vp = e.target.closest('.lc-vplay');
+      const cn = e.target.closest('.lc-cancel-now');
+      if (cn) { cancelOrder(+cn.closest('.lc-msg').dataset.id, cn); return; }
+      const cb = e.target.closest('.lc-cancel-btn');
+      if (cb) { cb.disabled = true; quick('Saya ingin membatalkan pesanan ' + (cb.dataset.code || '')); return; }
+      const fq = e.target.closest('.lc-faq-item');
+      if (fq) { quick(fq.dataset.q); return; }
+      const ob = e.target.closest('.lc-order-btn');
+      if (ob) { confirmAddress(+ob.closest('.lc-msg').dataset.id, ob); return; }
+const vp = e.target.closest('.lc-vplay');
       if (vp) { togglePlay(vp.closest('.lc-voice')); return; }
       const vb = e.target.closest('.lc-vbar');
       if (vb) { seekVoice(vb.closest('.lc-voice'), e); return; }
       const img = e.target.closest('.lc-img');
       if (img) lightbox(img.src);
     });
+
+    /* ---------- konfirmasi alamat (kartu pesanan) ---------- */
+    async function confirmAddress(id, btn) {
+      if (!cfg.urls.confirm) return;
+      btn.disabled = true;
+      try {
+        await api(cfg.urls.confirm(id), { method: 'POST' });
+        const m = msgs.get(id);
+        if (m) { m.address_confirmed = true; refresh(m); }
+        poll(); // ambil balasan otomatis "Terima kasih..." segera
+      } catch (e) {
+        btn.disabled = false;
+        toast(e.message);
+      }
+    }
+
+/* ---------- batalkan pesanan (belum dibayar) ---------- */
+    async function cancelOrder(id, btn) {
+      if (!cfg.urls.cancel) return;
+      if (!confirm('Batalkan pesanan ini? Pesanan yang sudah dibatalkan tidak bisa dikembalikan.')) return;
+      btn.disabled = true;
+      try {
+        await api(cfg.urls.cancel(id), { method: 'POST' });
+        const m = msgs.get(id);
+        if (m && m.order) { m.order.phase = 'cancelled'; refresh(m); }
+        poll(); // ambil balasan bot "berhasil dibatalkan"
+      } catch (e) {
+        btn.disabled = false;
+        toast(e.message);
+      }
+    }
+
+    /* ---------- balasan cepat (FAQ & chip) ---------- */
+    function quick(text) {
+      if (sending || rec || editing || !text) return;
+      const fd = new FormData();
+      fd.append('message', text);
+      post(fd).then(() => poll());
+    }
 
     /* ---------- lampiran ---------- */
     function showPreview() {
@@ -602,7 +763,7 @@
     async function startRec() {
       if (rec || sending) return;
       if (editing) { toast('Selesaikan atau batalkan edit dulu.'); return; }
-      if (!canRecord) { toast('Browser ini belum mendukung rekaman suara.'); return; }
+      if (!canRecord) { toast(w.isSecureContext === false ? 'Rekam suara butuh HTTPS atau localhost.' : 'Browser ini belum mendukung rekaman suara.'); return; }
 
       let stream;
       try {
@@ -814,6 +975,71 @@
     recEl.addEventListener('keydown', e => { if (e.key === 'Escape') finishRec(false); });
 
     syncBtn();
+
+    comp.addEventListener('click', e => {
+      const ch = e.target.closest('.lc-chip');
+      if (ch) quick(ch.dataset.q);
+    });
+
+    /* ---------- tombol ke pesan terbaru (customer) ---------- */
+    if (cfg.mode === 'customer') {
+      if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+      const down = document.createElement('button');
+      down.type = 'button';
+      down.id = 'lcDownBtn';
+      down.title = 'Ke pesan terbaru';
+      down.setAttribute('aria-label', 'Ke pesan terbaru');
+      down.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+      down.style.cssText = 'position:absolute;right:16px;bottom:90px;width:38px;height:38px;border:0;border-radius:50%;background:#fff;color:#555;box-shadow:0 2px 8px rgba(0,0,0,.28);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:5;padding:0';
+      root.appendChild(down);
+
+      const updDown = () => {
+        const far = list.scrollHeight - list.scrollTop - list.clientHeight > 200;
+        const rr = root.getBoundingClientRect(), cr = comp.getBoundingClientRect();
+        down.style.bottom = Math.max(8, rr.bottom - cr.top + 10) + 'px';
+        down.style.display = (far && root.offsetParent !== null) ? 'flex' : 'none';
+      };
+      list.addEventListener('scroll', updDown);
+      const dt = setInterval(() => { if (destroyed) clearInterval(dt); else updDown(); }, 500);
+      down.onclick = e => {
+        e.stopPropagation();
+        list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+      };
+    }
+
+    /* ---------- hapus chat (customer) ---------- */
+    if (cfg.mode === 'customer') {
+      if (getComputedStyle(root).position === 'static') root.style.position = 'relative';
+      const clr = document.createElement('button');
+      clr.type = 'button';
+      clr.id = 'lcClearBtn';
+      clr.title = 'Hapus chat';
+      clr.setAttribute('aria-label', 'Hapus chat');
+      clr.textContent = '🗑️';
+      clr.style.cssText = 'position:absolute;top:8px;right:14px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 1px 4px rgba(0,0,0,.2);cursor:pointer;font-size:14px;line-height:1;padding:0;z-index:5';
+      root.appendChild(clr);
+
+      clr.onclick = async e => {
+        e.stopPropagation();
+        if (!confirm('Hapus semua chat ini dari tampilan Anda? Tindakan ini tidak bisa dibatalkan.')) return;
+        clr.disabled = true;
+        try {
+          const url = cfg.urls.send().replace(/\/send(\?|$)/, '/clear$1');
+          await api(url, { method: 'POST' });
+          closeMenu(); stopPlayer(); closePanel(); clearBanner(false);
+          msgs.clear();
+          list.innerHTML = '';
+          lastDay = null;
+          stick = true;
+          toast('Chat dihapus');
+          poll(); // ambil sapaan & FAQ baru
+        } catch (err) {
+          toast(err.message);
+        } finally {
+          clr.disabled = false;
+        }
+      };
+    }
 
     /* ---------- public api ---------- */
     return {

@@ -1,0 +1,1749 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\ChatMessage;
+use App\Models\Pesanan;
+use App\Models\Produk;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Live chat customer/tamu <-> admin.
+ *
+ * Kolom tabel chat_messages:
+ *   id, customer_id (nullable), guest_id (nullable), sender ('customer' | 'admin'), admin_id, message, type,
+ *   attachment_path/name/mime/size/duration, reply_to_id, product_id, is_read,
+ *   delivered_at, read_at, edited_at, deleted_everyone_at,
+ *   hidden_customer, hidden_admin, created_at, updated_at
+ *
+ * Tabel chat_conversation_states: conv_id, pinned_at, archived_at, blocked_at, blocked_reason
+ * Tabel chat_customer_snapshots : conv_id (id user lama), nama, email  -> identitas customer yang akunnya dihapus
+ *
+ * ID percakapan ($conv):
+ *   > 0  = customer terdaftar (users.id)
+ *   < 0  = tamu (chat_guests.id dikali -1)
+ *
+ * type: text | image | voice | audio | file | sticker | product
+ */
+class LiveChatController extends Controller
+{
+    private const EDIT_MINUTES   = 15;
+    private const ONLINE_SECONDS = 90;
+    private const STATE_LIMIT    = 100;
+    private const CACHE_KEY      = 'livechat_admin_seen';
+    private const TYPING_SECONDS = 4;
+    private const STATES_TABLE   = 'chat_conversation_states';
+    private const SNAPSHOT_TABLE = 'chat_customer_snapshots';
+    private const MAX_PINNED     = 3;
+    private const FAQ_KEYS = [
+        'Kapan pesanan saya akan dikirim?'       => 'kirim',
+        'Di mana pesanan saya?'                  => 'lacak',
+        'Lacak pesanan'                          => 'lacak',
+        'Bisakah saya mengubah alamat pesanan?'  => 'alamat',
+        'Ubah alamat'                            => 'alamat',
+        'Bisakah saya membatalkan pesanan saya?' => 'batal',
+        'Bagaimana cara mengembalikan produk?'   => 'retur',
+        'Minta pengembalian dana'                => 'retur',
+    ];
+    private const GENERAL_FAQ_KEYS = [
+        'Bagaimana cara memesan produk?'         => 'cara_pesan',
+        'Berapa lama pengiriman barang?'         => 'lama_kirim',
+        'Ekspedisi apa saja yang tersedia?'      => 'ekspedisi',
+        'Metode pembayaran apa saja?'            => 'bayar',
+        'Apakah produk masih tersedia?'          => 'stok',
+        'Bagaimana jika barang rusak atau tidak sesuai?' => 'rusak',
+    ];
+    // SESUAIKAN isi jawaban di bawah dengan kebijakan toko kamu
+    private const GENERAL_FAQ_ANSWERS = [
+        'cara_pesan' => [
+            "Cara memesan produk:\n1. Pilih produk lalu masukkan ke keranjang.\n2. Buka keranjang dan lanjut ke checkout.\n3. Isi alamat pengiriman dan pilih ekspedisi.\n4. Selesaikan pembayaran.\nSetelah pembayaran masuk, pesanan kami proses dan kirim.",
+        ],
+        'lama_kirim' => [
+            'Pesanan diproses pada jam operasional 07:00 - 22:00 WIB. Pesanan yang masuk di luar jam operasional dikirim keesokan harinya.',
+            'Lama perjalanan paket tergantung ekspedisi dan kota tujuan. Perkiraannya tampil saat Anda memilih ekspedisi di halaman checkout, dan nomor resi muncul di riwayat belanja setelah paket dikirim.',
+        ],
+        'ekspedisi' => [
+            'Pilihan ekspedisi dan jenis layanannya tampil di halaman checkout setelah alamat pengiriman diisi, lengkap dengan ongkos kirimnya.',
+        ],
+        'bayar' => [
+            'Pembayaran dilakukan di halaman checkout lewat Midtrans, dengan metode yang tersedia saat itu (misalnya transfer bank / virtual account dan e-wallet).',
+            'Pesanan harus dibayar sebelum batas waktu pembayaran. Jika terlewat, pesanan otomatis kedaluwarsa dan Anda perlu membuat pesanan baru.',
+        ],
+        'stok' => [
+            'Stok dan detail produk bisa dilihat di halaman produknya. Untuk produk tertentu, kirim produknya lewat tombol tas belanja di chat ini dan tulis pertanyaan Anda, admin akan membantu mengecek.',
+        ],
+        'rusak' => [
+            'Jika barang yang diterima rusak atau tidak sesuai, simpan kemasannya dan foto atau video barang. Setelah Anda memiliki pesanan, pengajuan pengembalian dana bisa dilakukan lewat chat ini.',
+        ],
+    ];
+    private const WELCOME_HOURS = 12;
+    private const WELCOME_TEXT  = 'Terima kasih telah menghubungi kami. Apa yang bisa saya bantu hari ini?';
+    private const FAQ_TITLE     = 'Ada yang bisa kami bantu hari ini?';
+    private const ORDER_TEXT  = 'Terima kasih atas pesanan Anda! Harap konfirmasi bahwa alamat pengiriman sudah benar.';
+    private const THANKS_TEXT = 'Terima kasih telah mengonfirmasi alamat Anda.';
+private const AUTO_NAME      = 'BSI Cyber Store';
+    private const DELETED_NAME   = 'Customer ini sudah tidak aktif (dihapus)';
+    private const FROZEN_MESSAGE = 'Akun Anda sudah dibekukan, sehingga tidak dapat menghubungi admin. Silakan hubungi pihak toko untuk informasi lebih lanjut.';
+    private const AUTO_TEXT      = 'Halo! Saat ini admin sedang offline. Jadwal operasional kami 07:00 - 22:00 WIB. '
+        . 'Jika Anda menghubungi atau memesan di luar jam operasional, chat akan dibalas ketika toko sudah buka '
+        . 'dan pesanan yang masuk di luar jam operasional akan dikirim keesokan harinya. Terima kasih sudah menunggu.';
+
+    /* ================================================================
+     *  SISI CUSTOMER / TAMU
+     * ================================================================ */
+
+    public function customerMessages(Request $request): JsonResponse
+    {
+        // akun sudah dihapus superadmin: tampilkan pemberitahuan, jangan buat percakapan tamu baru
+        if ($this->frozenAccount($request)) {
+            return response()->json([
+                'messages'       => [],
+                'states'         => [],
+                'unread'         => 0,
+                'admin'          => $this->adminStatus(),
+                'typing'         => false,
+                'blocked'        => true,
+                'frozen'         => true,
+                'frozen_message' => self::FROZEN_MESSAGE,
+            ]);
+        }
+
+        $conv = $this->customerConv($request, false);
+
+        // tamu yang belum pernah kirim pesan: belum ada percakapan
+        if ($conv === null) {
+            return response()->json([
+                'messages' => [],
+                'states'   => [],
+                'unread'   => 0,
+                'admin'    => $this->adminStatus(),
+                'typing'   => false,
+            ]);
+        }
+
+        return $this->poll($conv, 'customer', $request);
+    }
+
+    public function customerSend(Request $request): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+
+        $conv = $this->customerConv($request, true);
+        return $this->store($request, $conv, 'customer');
+    }
+
+    public function customerEdit(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+
+        $conv = $this->customerConv($request, false);
+        if ($conv === null) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+        return $this->edit($request, $id, 'customer', $conv);
+    }
+
+    public function customerDelete(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+
+        $conv = $this->customerConv($request, false);
+        if ($conv === null) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+        return $this->destroyMessage($request, $id, 'customer', $conv);
+    }
+
+    // customer yang akunnya sudah dihapus tapi sesi login di browsernya masih tersimpan.
+    // Laravel menganggapnya "belum login" (user tidak ditemukan), tapi id user-nya masih ada di session.
+    private function frozenAccount(Request $request): bool
+    {
+        if (Auth::check() || !$request->hasSession()) {
+            return false;
+        }
+
+        /** @var \Illuminate\Auth\SessionGuard $guard */
+        $guard = Auth::guard();
+
+        // guard bukan session (misalnya token/API): tidak berlaku
+        if (!($guard instanceof \Illuminate\Auth\SessionGuard)) {
+            return false;
+        }
+
+        $id = $request->session()->get($guard->getName());
+
+        return !empty($id) && !User::where('id', $id)->exists();
+    }
+
+    private function frozenResponse(): JsonResponse
+    {
+        return response()->json([
+            'message'        => self::FROZEN_MESSAGE,
+            'frozen'         => true,
+            'frozen_message' => self::FROZEN_MESSAGE,
+        ], 403);
+    }
+
+    // pembatalan pesanan dari kartu chat. Hanya untuk pesanan yang BELUM dibayar.
+    public function customerCancelOrder(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+        if (!Auth::check()) {
+            return response()->json(['message' => 'Silakan login terlebih dahulu.'], 401);
+        }
+
+        $msg = ChatMessage::where('id', $id)
+            ->where('type', 'order_cancel')
+            ->where('customer_id', Auth::id())
+            ->first();
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+
+        $o = Pesanan::where('id', $msg->pesanan_id)->where('user_id', Auth::id())->first();
+        if (!$o) {
+            return response()->json(['message' => 'Pesanan tidak ditemukan.'], 404);
+        }
+
+        if ($this->orderPhase($o) !== 'unpaid') {
+            return response()->json(['message' => 'Pesanan ini tidak bisa dibatalkan otomatis. Silakan hubungi admin lewat chat.'], 422);
+        }
+
+        // batalkan transaksi di Midtrans (kalau sudah dibuat) supaya tidak bisa dibayar setelah dibatalkan
+        try {
+            \Midtrans\Config::$serverKey    = config('midtrans.server_key');
+            \Midtrans\Config::$isProduction = config('midtrans.is_production');
+            \Midtrans\Transaction::cancel($o->kode_pesanan);
+        } catch (\Throwable $e) {
+            // transaksi belum dibuat di Midtrans / sudah tidak aktif: abaikan
+        }
+
+        // update bersyarat: hanya kalau status belum berubah sejak dibaca
+        $updated = Pesanan::where('id', $o->id)->where('status', $o->status)->update(['status' => 'Dibatalkan']);
+        if (!$updated) {
+            return response()->json(['message' => 'Status pesanan baru saja berubah. Muat ulang lalu coba lagi.'], 409);
+        }
+
+        $bot = new ChatMessage();
+        $bot->forceFill([
+            'customer_id'  => $msg->customer_id,
+            'guest_id'     => null,
+            'sender'       => 'admin',
+            'admin_id'     => null,
+            'message'      => 'Pesanan ' . ($o->kode_pesanan ?: ('#' . $o->id)) . ' berhasil dibatalkan.',
+            'type'         => 'bot_reply',
+            'is_read'      => 0,
+            'hidden_admin' => true,
+        ])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // pertanyaan FAQ / chip yang dikenali bot (teks harus persis sama dengan yang di livechat.js)
+    private function faqKey(Request $request, string $role, int $conv, string $text): ?string
+    {
+        if ($role !== 'customer' || $conv <= 0 || $text === '') {
+            return null;
+        }
+        if ($request->hasFile('file') || $request->filled('product_id') || $request->filled('reply_to_id')) {
+            return null;
+        }
+        return self::FAQ_KEYS[$text] ?? self::GENERAL_FAQ_KEYS[$text] ?? null;
+    }
+
+    // fase pesanan, dibaca dari kolom status/no_resi. Status yang tidak dikenal dianggap 'processing'.
+    private function orderPhase($o): string
+    {
+        $s = strtolower(trim((string) $o->status));
+        if (preg_match('/batal|cancel|gagal|expire|kedaluwarsa|kadaluarsa|kadaluwarsa/', $s)) {
+            return 'cancelled';
+        }
+        if (preg_match('/selesai|diterima|complete/', $s)) {
+            return 'done';
+        }
+        if (preg_match('/^(menunggu[ _]?pembayaran|belum[ _]?dibayar|pending|unpaid)/', $s)) {
+            return $o->sudah_expired ? 'expired' : 'unpaid';
+        }
+        if (!empty($o->no_resi) || preg_match('/kirim|shipp/', $s)) {
+            return 'shipped';
+        }
+        return 'processing';
+    }
+
+    private function faqReply(int $conv, string $key): void
+    {
+        $hide = false; // retur & ubah alamat diteruskan ke admin, sisanya tersembunyi dari admin
+
+        $make = function (string $type, string $text, $pesananId = null) use ($conv, $hide) {
+            $m = new ChatMessage();
+            $m->forceFill([
+                'customer_id'  => $conv,
+                'guest_id'     => null,
+                'sender'       => 'admin',
+                'admin_id'     => null, // pesan bot
+                'message'      => $text,
+                'type'         => $type,
+                'pesanan_id'   => $pesananId,
+                'is_read'      => 0,
+                'hidden_admin' => $hide,
+            ])->save();
+        };
+
+        if (isset(self::GENERAL_FAQ_ANSWERS[$key])) {
+            foreach (self::GENERAL_FAQ_ANSWERS[$key] as $t) {
+                $make('bot_reply', $t);
+            }
+            return;
+        }
+
+        if ($key === 'retur') {
+            $o = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+            if (!$o) {
+                $make('bot_reply', 'Anda belum memiliki pesanan, jadi belum ada dana yang bisa dikembalikan. Silakan pilih produk di toko kami terlebih dahulu.');
+                return;
+            }
+
+            $kode  = $o->kode_pesanan ?: ('#' . $o->id);
+            $phase = $this->orderPhase($o);
+
+            $make('bot_reply', 'Baik, kami bantu pengajuan pengembalian dana. Berikut pesanan terakhir Anda:');
+            $make('order_summary', '', $o->id);
+
+            $alasan = "Pilih alasan pengembalian (ketik nomornya atau jelaskan dengan kata-kata Anda):\n"
+                . "1. Barang rusak / cacat\n"
+                . "2. Barang tidak sesuai pesanan\n"
+                . "3. Barang kurang / tidak lengkap\n"
+                . "4. Paket belum diterima\n"
+                . "5. Alasan lainnya";
+
+            $bukti = "Agar pengajuan cepat diproses, kirim juga:\n"
+                . "- Foto atau video barang (termasuk kemasan dan label paket)\n"
+                . "- Penjelasan singkat kondisi barang\n"
+                . "Gunakan tombol lampiran (ikon klip) di chat ini untuk mengirim foto atau video.";
+
+            $lanjut = 'Setelah bukti kami terima, admin akan meninjau pengajuan Anda dan memberi kabar lewat chat ini. '
+                . 'Jika disetujui, dana dikembalikan ke metode pembayaran yang Anda gunakan.';
+
+            switch ($phase) {
+                case 'unpaid':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' belum dibayar, jadi tidak ada dana yang perlu dikembalikan. Jika Anda tidak ingin melanjutkan pesanan ini, Anda bisa membatalkannya di bawah.');
+                    $make('order_cancel', '', $o->id);
+                    break;
+
+                case 'expired':
+                case 'cancelled':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah dibatalkan atau melewati batas pembayaran. Jika Anda sempat membayar dan dana belum kembali, ketik kendala Anda beserta bukti pembayaran di chat ini, admin akan membantu memeriksanya.');
+                    break;
+
+                case 'processing':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah dibayar dan sedang kami proses, belum dikirim. Pesanan ini masih bisa dibatalkan, dan dana dikembalikan ke metode pembayaran Anda.');
+                    $make('bot_reply', 'Silakan ketik alasan pembatalan di chat ini, admin akan memprosesnya.');
+                    break;
+
+                case 'shipped':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' masih dalam pengiriman. Pengembalian dana bisa diajukan jika paket tidak kunjung sampai, atau barang rusak / tidak sesuai setelah diterima.');
+                    $make('bot_reply', $alasan);
+                    $make('bot_reply', $bukti);
+                    $make('bot_reply', $lanjut);
+                    break;
+
+                default: // done
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah selesai. Anda masih bisa mengajukan pengembalian dana jika ada kendala pada barang yang diterima.');
+                    $make('bot_reply', $alasan);
+                    $make('bot_reply', $bukti);
+                    $make('bot_reply', $lanjut);
+            }
+
+            $make('bot_reply', 'Untuk pesanan lain, ketik kode pesanannya di chat ini.');
+            return;
+        }
+
+        $o = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+        if (!$o) {
+            $make('bot_reply', 'Anda belum memiliki pesanan. Silakan pilih produk di toko kami terlebih dahulu.');
+            return;
+        }
+
+        $kode  = $o->kode_pesanan ?: ('#' . $o->id);
+        $base  = 'Pesanan ' . $kode;
+        $phase = $this->orderPhase($o);
+        $kurir = trim(($o->ekspedisi ?? '') . ' ' . ($o->layanan_ekspedisi ?? ''));
+        $resi  = trim((string) ($o->no_resi ?? ''));
+
+        if ($key === 'kirim' || $key === 'lacak') {
+            switch ($phase) {
+                case 'unpaid':
+                    $t = $base . ' belum dibayar, jadi belum bisa kami proses dan kirim.';
+                    $t .= $o->batas_pembayaran
+                        ? ' Silakan selesaikan pembayaran sebelum ' . $o->batas_pembayaran->format('d M Y, H:i') . '.'
+                        : ' Silakan selesaikan pembayaran terlebih dahulu.';
+                    $make('bot_reply', $t);
+                    break;
+                case 'expired':
+                    $make('bot_reply', $base . ' melewati batas pembayaran sehingga tidak dapat diproses. Silakan buat pesanan baru.');
+                    break;
+                case 'cancelled':
+                    $make('bot_reply', $base . ' sudah dibatalkan, jadi tidak ada pengiriman untuk pesanan ini.');
+                    break;
+                case 'done':
+                    $make('bot_reply', $base . ' sudah selesai. Terima kasih sudah berbelanja di toko kami!');
+                    break;
+                case 'shipped':
+                    $t = $base . ' sudah dikirim' . ($kurir !== '' ? ' melalui ' . $kurir : '') . '.';
+                    $t .= $resi !== '' ? ' Nomor resi: ' . $resi . '.' : ' Nomor resi akan segera diperbarui.';
+                    $make('bot_reply', $t);
+                    break;
+                default:
+                    $make('bot_reply', $base . ' sedang kami proses dan belum dikirim. Nomor resi akan muncul di riwayat belanja setelah paket dikirim.');
+                    if ($key === 'kirim') {
+                        $make('bot_reply', 'Jadwal operasional kami 07:00 - 22:00 WIB. Pesanan yang masuk di luar jam operasional akan dikirim keesokan harinya.');
+                    }
+            }
+            return;
+        }
+
+        if ($key === 'alamat') {
+            if ($phase === 'unpaid' || $phase === 'processing') {
+                $make('bot_reply', 'Alamat pengiriman ' . $base . " saat ini:\n" . ($o->alamat ?: '-'));
+                $make('bot_reply', 'Alamat masih bisa diubah selama pesanan belum dikirim. Silakan ketik alamat baru Anda selengkapnya di chat ini, admin akan membantu mengubahnya.');
+            } elseif ($phase === 'shipped' || $phase === 'done') {
+                $make('bot_reply', $base . ' sudah dikirim atau selesai, sehingga alamat tidak bisa diubah lagi.');
+            } else {
+                $make('bot_reply', $base . ' sudah tidak aktif, jadi tidak ada alamat yang perlu diubah.');
+            }
+            return;
+        }
+
+        if ($key === 'batal') {
+            if ($phase === 'unpaid') {
+                $make('bot_reply', $base . ' belum dibayar dan masih bisa dibatalkan.');
+                $make('order_cancel', '', $o->id);
+            } elseif ($phase === 'processing') {
+                $make('bot_reply', $base . ' masih bisa dibatalkan selama belum dikirim. Jika pembayaran sudah masuk, pengembaliannya akan diproses oleh admin.');
+                $make('order_cancel', '', $o->id);
+            } elseif ($phase === 'shipped') {
+                $make('bot_reply', $base . ' sudah dalam pengiriman sehingga tidak bisa dibatalkan langsung. Jika ada kendala, ketik masalah Anda di chat ini dan admin akan membantu.');
+            } elseif ($phase === 'done') {
+                $make('bot_reply', $base . ' sudah selesai, jadi tidak bisa dibatalkan. Untuk pengembalian produk, pilih "Bagaimana cara mengembalikan produk?".');
+            } else {
+                $make('bot_reply', $base . ' sudah dibatalkan atau tidak aktif.');
+            }
+        }
+    }
+
+    // sapaan bot saat customer membuka chat: sapaan + ringkasan pesanan terakhir + FAQ.
+    // Disimpan sebagai pesan yang tersembunyi dari admin (hidden_admin) supaya tidak jadi percakapan kosong.
+    private function maybeWelcome(int $conv): void
+    {
+        if ($this->isBlocked($conv) || $this->isDeletedConv($conv)) {
+            return;
+        }
+
+        // cegah dobel kalau dua polling datang bersamaan
+        if (!Cache::add('livechat_welcome_' . $conv, 1, now()->addSeconds(10))) {
+            return;
+        }
+
+        $recent = ChatMessage::where('customer_id', $conv)
+            ->where('type', 'bot_text')
+            ->where('created_at', '>=', now()->subHours(self::WELCOME_HOURS))
+            ->exists();
+        if ($recent) {
+            return;
+        }
+
+        $make = function (array $extra) use ($conv) {
+            $m = new ChatMessage();
+            $m->forceFill(array_merge([
+                'customer_id'  => $conv,
+                'guest_id'     => null,
+                'sender'       => 'admin',
+                'admin_id'     => null,
+                'is_read'      => 0,
+                'hidden_admin' => true,
+            ], $extra))->save();
+        };
+
+        $make(['type' => 'bot_text', 'message' => self::WELCOME_TEXT]);
+
+        $order = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+        if ($order) {
+            $make(['type' => 'order_summary', 'message' => '', 'pesanan_id' => $order->id]);
+        }
+
+        $make(['type' => 'bot_faq', 'message' => self::FAQ_TITLE]);
+    }
+
+    private function statusLabel($s): string
+    {
+        $map = [
+            'menunggupembayaran' => 'Menunggu pembayaran',
+            'menunggu pembayaran' => 'Menunggu pembayaran',
+            'paid'               => 'Sudah dibayar',
+            'kadaluarsa'         => 'Kedaluwarsa',
+            'dibayar'            => 'Sudah dibayar',
+            'diproses'           => 'Sedang diproses',
+            'dikemas'            => 'Sedang dikemas',
+            'dikirim'            => 'Dalam pengiriman',
+            'selesai'            => 'Selesai',
+            'dibatalkan'         => 'Dibatalkan',
+            'expired'            => 'Kedaluwarsa',
+        ];
+        $k = strtolower(trim((string) $s));
+        return $map[$k] ?? ucfirst(str_replace('_', ' ', $k));
+    }
+
+    // dipanggil dari checkout setelah pesanan tersimpan
+    public static function notifyOrder($pesanan): void
+    {
+        $userId = (int) ($pesanan->user_id ?? $pesanan->customer_id ?? 0);
+        if ($userId <= 0) {
+            return;
+        }
+
+        $exists = ChatMessage::where('type', 'order_confirm')
+            ->where('pesanan_id', $pesanan->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        $msg = new ChatMessage();
+        $msg->forceFill([
+            'customer_id' => $userId,
+            'guest_id'    => null,
+            'sender'      => 'admin',
+            'admin_id'    => null, // pesan otomatis
+            'message'     => self::ORDER_TEXT,
+            'type'        => 'order_confirm',
+            'pesanan_id'  => $pesanan->id,
+            'is_read'     => 0,
+        ])->save();
+    }
+
+    public function customerConfirmAddress(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+        if (!Auth::check()) {
+            return response()->json(['message' => 'Silakan login terlebih dahulu.'], 401);
+        }
+
+        $msg = ChatMessage::where('id', $id)
+            ->where('type', 'order_confirm')
+            ->where('customer_id', Auth::id())
+            ->first();
+
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+
+        // update bersyarat: kalau diklik dobel, balasan hanya terbuat sekali
+        $updated = ChatMessage::where('id', $msg->id)
+            ->whereNull('address_confirmed_at')
+            ->update(['address_confirmed_at' => now()]);
+
+        if ($updated) {
+            $thanks = new ChatMessage();
+            $thanks->forceFill([
+                'customer_id' => $msg->customer_id,
+                'guest_id'    => null,
+                'sender'      => 'admin',
+                'admin_id'    => null,
+                'message'     => self::THANKS_TEXT,
+                'type'        => 'text',
+                'is_read'     => 0,
+            ])->save();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+// customer menghapus chat dari tampilannya sendiri (admin tetap melihat chat-nya)
+    public function customerClear(Request $request): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+
+        $conv = $this->customerConv($request, false);
+        if ($conv === null) {
+            return response()->json(['ok' => true]);
+        }
+
+        $this->inConv(ChatMessage::query(), $conv)->update(['hidden_customer' => true]);
+
+        // hapus sapaan bot (tidak terlihat admin) supaya sapaan + FAQ muncul lagi saat widget dibuka
+        $this->inConv(ChatMessage::query(), $conv)
+            ->where('type', 'bot_text')
+            ->where('hidden_admin', true)
+            ->delete();
+        Cache::forget('livechat_welcome_' . $conv);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function customerFlag(Request $request, $id): JsonResponse
+    {
+        return response()->json(['ok' => true]);
+    }
+
+    /* ================================================================
+     *  SISI ADMIN
+     * ================================================================ */
+
+    public function adminIndex()
+    {
+        return view('backend.chat.index');
+    }
+
+    // ?archived=1 -> daftar arsip | ?blocked=1 -> daftar akun diblokir | default -> daftar aktif
+    public function adminConversations(Request $request): JsonResponse
+    {
+        $this->touchAdmin();
+        $showArchived = $request->boolean('archived');
+        $showBlocked  = $request->boolean('blocked');
+
+        ChatMessage::where('sender', 'customer')
+            ->whereNull('delivered_at')
+            ->update(['delivered_at' => now()]);
+
+        $expr = 'COALESCE(CAST(customer_id AS SIGNED), 0 - CAST(guest_id AS SIGNED))';
+
+        $rows = ChatMessage::where('hidden_admin', false)
+            ->selectRaw("$expr as conv_id, MAX(id) as last_id, SUM(CASE WHEN sender = 'customer' AND read_at IS NULL THEN 1 ELSE 0 END) as unread")
+            ->groupByRaw($expr)
+            ->orderByDesc('last_id')
+            ->get();
+
+        $lastMsgs = ChatMessage::whereIn('id', $rows->pluck('last_id'))->get()->keyBy('id');
+
+        $convIds  = $rows->pluck('conv_id')->map(fn ($v) => (int) $v)->values();
+        $userIds  = $convIds->filter(fn ($v) => $v > 0)->values();
+        $guestIds = $convIds->filter(fn ($v) => $v < 0)->map(fn ($v) => -$v)->values();
+
+        $users  = User::whereIn('id', $userIds)->get()->keyBy('id');
+        $guests = $guestIds->isNotEmpty()
+            ? DB::table('chat_guests')->whereIn('id', $guestIds)->pluck('nama', 'id')
+            : collect();
+
+        // identitas customer yang akunnya sudah dihapus (untuk label ala WhatsApp)
+        $snaps = $userIds->isNotEmpty()
+            ? DB::table(self::SNAPSHOT_TABLE)->whereIn('conv_id', $userIds)->get()->keyBy('conv_id')
+            : collect();
+
+        $states = $convIds->isNotEmpty()
+            ? DB::table(self::STATES_TABLE)->whereIn('conv_id', $convIds)->get()->keyBy('conv_id')
+            : collect();
+
+        $total         = 0; // unread dari percakapan aktif (tidak diarsipkan)
+        $archivedCount = 0;
+        $pinnedList    = [];
+        $list          = [];
+
+        foreach ($rows as $r) {
+            $conv     = (int) $r->conv_id;
+            $last     = $lastMsgs->get($r->last_id);
+            $unread   = (int) $r->unread;
+            $st       = $states->get($conv);
+            $archived = (bool) ($st && $st->archived_at);
+            $blocked  = (bool) ($st && $st->blocked_at);
+            $pinned   = (bool) ($st && $st->pinned_at) && !$archived;
+
+            if ($archived) {
+                $archivedCount++;
+            } else {
+                $total += $unread;
+            }
+
+            if ($showBlocked || $archived !== $showArchived) {
+                continue;
+            }
+
+            // nama percakapan; akun customer yang sudah dihapus tampil dengan email-nya (kalau ada)
+            $deleted = false;
+            if ($conv > 0) {
+                $u = $users->get($conv);
+                if ($u) {
+                    $nama = $this->userName($u) ?? 'Customer';
+                } else {
+                    $nama    = $this->deletedLabel($snaps->get($conv));
+                    $deleted = true;
+                }
+            } else {
+                $nama = 'Tamu – ' . ($guests->get(-$conv) ?: 'Tamu');
+            }
+
+            $item = [
+                'customer_id'  => $conv,
+                'nama'         => $nama,
+                'is_guest'     => $conv < 0,
+                'last_message' => $last ? $this->previewText($last) : '',
+                'last_sender'  => $last ? $last->sender : null,
+                'last_at'      => $last ? $last->created_at->toIso8601String() : null,
+                'unread'       => $unread,
+                'archived'     => $archived,
+                'blocked'      => $blocked,
+                'pinned'       => $pinned,
+                'deleted'      => $deleted,
+            ];
+
+            if ($pinned) {
+                $pinnedList[] = $item;
+            } else {
+                $list[] = $item;
+            }
+        }
+
+        $payload = [
+            'conversations'  => $showBlocked ? [] : array_merge($pinnedList, $list), // yang disematkan di atas
+            'total_unread'   => $total,
+            'archived_count' => $archivedCount,
+            'blocked_count'  => DB::table(self::STATES_TABLE)->whereNotNull('blocked_at')->count(),
+        ];
+
+        if ($showBlocked) {
+            $payload['blocked_accounts'] = $this->blockedAccounts();
+        }
+
+        return response()->json($payload);
+    }
+
+    public function adminMessages(Request $request, $customer): JsonResponse
+    {
+        $this->touchAdmin();
+        return $this->poll((int) $customer, 'admin', $request);
+    }
+
+    public function adminSend(Request $request, $customer): JsonResponse
+    {
+        $this->touchAdmin();
+        return $this->store($request, (int) $customer, 'admin');
+    }
+
+    public function adminEdit(Request $request, $id): JsonResponse
+    {
+        return $this->edit($request, $id, 'admin', null);
+    }
+
+    public function adminDelete(Request $request, $id): JsonResponse
+    {
+        return $this->destroyMessage($request, $id, 'admin', null);
+    }
+
+    public function adminFlag(Request $request, $id): JsonResponse
+    {
+        return response()->json(['ok' => true]);
+    }
+
+    /* ---------- kelola percakapan: sematkan / arsip / blokir / hapus ---------- */
+
+    // body: pin=1 (sematkan) atau pin=0 (lepas)
+    public function adminPin(Request $request, $customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $pin = $request->boolean('pin', true);
+
+        if ($pin) {
+            $count = DB::table(self::STATES_TABLE)
+                ->whereNotNull('pinned_at')
+                ->where('conv_id', '!=', $conv)
+                ->count();
+
+            if ($count >= self::MAX_PINNED) {
+                return response()->json([
+                    'message' => 'Maksimal ' . self::MAX_PINNED . ' percakapan yang bisa disematkan. Lepas salah satu dulu.',
+                ], 422);
+            }
+        }
+
+        $values = ['pinned_at' => $pin ? now() : null];
+        if ($pin) {
+            $values['archived_at'] = null; // percakapan yang disematkan selalu di daftar aktif
+        }
+        $this->setState($conv, $values);
+
+        return response()->json(['ok' => true, 'pinned' => $pin]);
+    }
+
+    // body: archive=1 (arsipkan) atau archive=0 (kembalikan)
+    public function adminArchive(Request $request, $customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $archive = $request->boolean('archive', true);
+        $values  = ['archived_at' => $archive ? now() : null];
+        if ($archive) {
+            $values['pinned_at'] = null; // diarsipkan -> sematan otomatis lepas
+        }
+        $this->setState($conv, $values);
+
+        return response()->json(['ok' => true, 'archived' => $archive]);
+    }
+
+    // body: block=1 (blokir) atau block=0 (buka blokir), reason (opsional)
+    public function adminBlock(Request $request, $customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $block  = $request->boolean('block', true);
+        $reason = trim(strip_tags((string) $request->input('reason', '')));
+
+        // hanya customer (role 2) atau tamu yang boleh diblokir; admin tidak.
+        // pengecekan ini hanya saat MEMBLOKIR, supaya akun yang sudah dihapus tetap bisa dibuka blokirnya.
+        if ($block && $conv > 0) {
+            $u = User::find($conv);
+            if (!$u || (string) ($u->role ?? '') !== '2') {
+                return response()->json(['message' => 'Akun customer tidak ditemukan.'], 404);
+            }
+        }
+
+        $this->setState($conv, [
+            'blocked_at'     => $block ? now() : null,
+            'blocked_reason' => $block && $reason !== '' ? mb_substr($reason, 0, 255) : null,
+        ]);
+
+        return response()->json(['ok' => true, 'blocked' => $block]);
+    }
+
+    // hapus percakapan dari tampilan admin (customer tetap melihat chat-nya)
+    public function adminDeleteConversation(Request $request, $customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $this->inConv(ChatMessage::query(), $conv)->update(['hidden_admin' => true]);
+        $this->setState($conv, ['archived_at' => null, 'pinned_at' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /* ================================================================
+     *  PRODUK (dipakai customer/tamu & admin untuk memilih produk di chat)
+     * ================================================================ */
+
+    public function products(Request $request): JsonResponse
+    {
+        $q     = trim((string) $request->query('q', ''));
+        $query = Produk::query();
+
+        if ($q !== '') {
+            $col = $this->productNameColumn();
+            if ($col) {
+                $query->where($col, 'like', '%' . $q . '%');
+            }
+        }
+
+        $items = $query->orderByDesc('id')->limit(20)->get()
+            ->map(fn ($p) => $this->productCard($p))
+            ->values();
+
+        return response()->json(['products' => $items]);
+    }
+
+    /* ================================================================
+     *  STATUS PERCAKAPAN (sematan / arsip / blokir)
+     * ================================================================ */
+
+    private function setState(int $conv, array $values): void
+    {
+        DB::table(self::STATES_TABLE)->updateOrInsert(
+            ['conv_id' => $conv],
+            array_merge($values, ['updated_at' => now()])
+        );
+    }
+
+    private function isBlocked(int $conv): bool
+    {
+        return DB::table(self::STATES_TABLE)
+            ->where('conv_id', $conv)
+            ->whereNotNull('blocked_at')
+            ->exists();
+    }
+
+    // true kalau percakapan milik customer terdaftar yang akunnya sudah dihapus
+    private function isDeletedConv(int $conv): bool
+    {
+        return $conv > 0 && !User::where('id', $conv)->exists();
+    }
+
+    // label untuk akun yang sudah dihapus: email (seperti nomor di WhatsApp), lalu nama, lalu teks bawaan
+    private function deletedLabel($snapshot): string
+    {
+        if ($snapshot) {
+            if (!empty($snapshot->email)) {
+                return (string) $snapshot->email;
+            }
+            if (!empty($snapshot->nama)) {
+                return (string) $snapshot->nama;
+            }
+        }
+        return self::DELETED_NAME;
+    }
+
+    // daftar semua akun/tamu yang sedang diblokir (termasuk yang percakapannya sudah dihapus)
+    private function blockedAccounts(): array
+    {
+        $rows = DB::table(self::STATES_TABLE)
+            ->whereNotNull('blocked_at')
+            ->orderByDesc('blocked_at')
+            ->get();
+
+        $userIds  = $rows->pluck('conv_id')->map(fn ($v) => (int) $v)->filter(fn ($v) => $v > 0)->values();
+        $guestIds = $rows->pluck('conv_id')->map(fn ($v) => (int) $v)->filter(fn ($v) => $v < 0)->map(fn ($v) => -$v)->values();
+
+        $users  = $userIds->isNotEmpty() ? User::whereIn('id', $userIds)->get()->keyBy('id') : collect();
+        $guests = $guestIds->isNotEmpty()
+            ? DB::table('chat_guests')->whereIn('id', $guestIds)->pluck('nama', 'id')
+            : collect();
+        $snaps  = $userIds->isNotEmpty()
+            ? DB::table(self::SNAPSHOT_TABLE)->whereIn('conv_id', $userIds)->get()->keyBy('conv_id')
+            : collect();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $conv    = (int) $r->conv_id;
+            $deleted = false;
+
+            if ($conv > 0) {
+                $u = $users->get($conv);
+                if ($u) {
+                    $nama  = $this->userName($u) ?? 'Customer';
+                    $email = $u->email ?? null;
+                } else {
+                    $snap    = $snaps->get($conv);
+                    $nama    = $this->deletedLabel($snap);
+                    $email   = $snap->email ?? null;
+                    $deleted = true;
+                }
+            } else {
+                $nama  = 'Tamu – ' . ($guests->get(-$conv) ?: 'Tamu');
+                $email = null;
+            }
+
+            $out[] = [
+                'customer_id' => $conv,
+                'nama'        => $nama,
+                'email'       => $email,
+                'is_guest'    => $conv < 0,
+                'deleted'     => $deleted,
+                'reason'      => $r->blocked_reason,
+                'blocked_at'  => $this->iso($r->blocked_at),
+            ];
+        }
+
+        return $out;
+    }
+
+    /* ================================================================
+     *  IDENTITAS PERCAKAPAN (customer login / tamu)
+     * ================================================================ */
+
+    // return: id percakapan (>0 customer, <0 tamu), atau null kalau tamu belum punya percakapan
+    private function customerConv(Request $request, bool $create): ?int
+    {
+        if (Auth::check()) {
+            $user = Auth::user();
+            if ((string) ($user->role ?? '') !== '2') {
+                abort(403, 'Chat ini hanya untuk customer.');
+            }
+            $this->mergeGuest($request, (int) $user->id);
+            return (int) $user->id;
+        }
+
+        $token = $this->guestToken($request);
+        if (!$token) {
+            if ($create) {
+                abort(422, 'Sesi chat tidak valid. Muat ulang halaman lalu coba lagi.');
+            }
+            return null;
+        }
+
+        $name  = $this->guestName($request);
+        $guest = DB::table('chat_guests')->where('token', $token)->first();
+
+        if (!$guest) {
+            if (!$create) {
+                return null;
+            }
+            $id = DB::table('chat_guests')->insertGetId([
+                'token'      => $token,
+                'nama'       => $name ?: 'Tamu',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            return -((int) $id);
+        }
+
+        if ($name && $name !== $guest->nama) {
+            DB::table('chat_guests')->where('id', $guest->id)->update(['nama' => $name, 'updated_at' => now()]);
+        }
+
+        return -((int) $guest->id);
+    }
+
+    // tamu yang kemudian login: pindahkan chat lamanya ke akun (status sematan/arsip/blokir ikut pindah)
+    private function mergeGuest(Request $request, int $userId): void
+    {
+        $token = $this->guestToken($request);
+        if (!$token) {
+            return;
+        }
+
+        $guest = DB::table('chat_guests')->where('token', $token)->first();
+        if (!$guest) {
+            return;
+        }
+
+        DB::transaction(function () use ($guest, $userId) {
+            ChatMessage::where('guest_id', $guest->id)->update([
+                'customer_id' => $userId,
+                'guest_id'    => null,
+            ]);
+
+            $gs = DB::table(self::STATES_TABLE)->where('conv_id', -$guest->id)->first();
+            if ($gs) {
+                if (DB::table(self::STATES_TABLE)->where('conv_id', $userId)->exists()) {
+                    DB::table(self::STATES_TABLE)->where('conv_id', -$guest->id)->delete();
+                } else {
+                    DB::table(self::STATES_TABLE)->where('conv_id', -$guest->id)->update(['conv_id' => $userId]);
+                }
+            }
+
+            DB::table('chat_guests')->where('id', $guest->id)->delete();
+        });
+    }
+
+    private function guestToken(Request $request): ?string
+    {
+        $t = (string) $request->input('guest', '');
+        return preg_match('/^[A-Za-z0-9\-]{16,64}$/', $t) ? $t : null;
+    }
+
+    private function guestName(Request $request): ?string
+    {
+        $n = trim(strip_tags((string) $request->input('name', '')));
+        $n = mb_substr($n, 0, 40);
+        return $n !== '' ? $n : null;
+    }
+
+    // batasi query ke satu percakapan
+    private function inConv($query, int $conv)
+    {
+        return $conv > 0
+            ? $query->where('customer_id', $conv)
+            : $query->where('guest_id', -$conv);
+    }
+
+    /* ================================================================
+     *  INTI: polling, kirim, edit, hapus
+     * ================================================================ */
+
+    private function poll(int $conv, string $role, Request $request): JsonResponse
+    {
+        $after = (int) $request->query('after', 0);
+        $other = $role === 'admin' ? 'customer' : 'admin';
+        $open  = $role === 'admin' ? true : $request->boolean('open');
+
+        if ($role === 'customer' && $open && $conv > 0) {
+            $this->maybeWelcome($conv);
+        }
+
+        if ($request->boolean('typing')) {
+            Cache::put($this->typingKey($conv, $role), true, now()->addSeconds(self::TYPING_SECONDS));
+        }
+
+        $this->inConv(ChatMessage::query(), $conv)
+            ->where('sender', $other)
+            ->whereNull('delivered_at')
+            ->update(['delivered_at' => now()]);
+
+        if ($open) {
+            $this->inConv(ChatMessage::query(), $conv)
+                ->where('sender', $other)
+                ->whereNull('read_at')
+                ->update(['read_at' => now(), 'is_read' => 1]);
+        }
+
+        $new = $this->visible($conv, $role)
+            ->where('id', '>', $after)
+            ->orderBy('id')
+            ->get();
+
+        $recent = $this->visible($conv, $role)
+            ->orderByDesc('id')
+            ->limit(self::STATE_LIMIT)
+            ->get();
+
+        $states = [];
+        foreach ($recent as $m) {
+            $states[$m->id] = $this->stateOf($m);
+        }
+
+        $unread = $role === 'customer'
+            ? $this->visible($conv, 'customer')->where('sender', 'admin')->whereNull('read_at')->count()
+            : 0;
+
+        return response()->json([
+            'messages' => $this->formatMany($new),
+            'states'   => $states,
+            'unread'   => $unread,
+            'admin'    => $this->adminStatus($conv, $role),
+            'typing'   => Cache::has($this->typingKey($conv, $other)),
+            'blocked'  => $this->isBlocked($conv),
+            'deleted'  => $role === 'admin' && $this->isDeletedConv($conv), 'has_order' => $role === 'customer' && $conv > 0 && Pesanan::where('user_id', $conv)->exists(),
+        ]);
+    }
+
+    private function store(Request $request, int $conv, string $role): JsonResponse
+    {
+        // customer/tamu yang diblokir admin tidak bisa mengirim pesan
+        if ($role === 'customer' && $this->isBlocked($conv)) {
+            return response()->json([
+                'message' => 'Kamu tidak dapat mengirim pesan ke admin saat ini.',
+            ], 403);
+        }
+
+        // admin tidak bisa membalas akun customer yang sudah dihapus
+        if ($role === 'admin' && $this->isDeletedConv($conv)) {
+            return response()->json([
+                'message' => self::DELETED_NAME . ', tidak bisa dibalas.',
+            ], 403);
+        }
+
+        $request->validate([
+            'message'     => 'nullable|string|max:1000',
+            'file'        => 'nullable|file|max:10240|mimes:jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,csv,zip,rar,mp3,wav,m4a,aac,ogg,opus,webm,mp4',
+            'reply_to_id' => 'nullable|integer',
+            'product_id'  => 'nullable|integer',
+            'duration'    => 'nullable|integer|min:0|max:600',
+        ]);
+
+        $text = trim((string) $request->input('message', ''));
+
+        // produk yang dikirim (kartu produk)
+        $productId = null;
+        if ($request->filled('product_id') && !$request->hasFile('file')) {
+            $prod = Produk::find($request->input('product_id'));
+            if (!$prod) {
+                return response()->json(['message' => 'Produk tidak ditemukan.'], 404);
+            }
+            $productId = $prod->id;
+        }
+
+        if ($text === '' && !$request->hasFile('file') && !$productId) {
+            return response()->json(['message' => 'Pesan tidak boleh kosong.'], 422);
+        }
+
+        $data = [
+            'customer_id' => $conv > 0 ? $conv : null,
+            'guest_id'    => $conv < 0 ? -$conv : null,
+            'sender'      => $role,
+            'message'     => $text,
+            'type'        => 'text',
+            'is_read'     => 0,
+        ];
+
+        if ($role === 'admin') {
+            $data['admin_id'] = Auth::id();
+        }
+
+        if ($productId) {
+            $data['type']       = 'product';
+            $data['product_id'] = $productId;
+        }
+
+        if ($request->filled('reply_to_id')) {
+            $target = $this->inConv(ChatMessage::where('id', $request->input('reply_to_id')), $conv)->first();
+            if ($target) {
+                $data['reply_to_id'] = $target->id;
+            }
+        }
+
+        if ($request->hasFile('file')) {
+            $f    = $request->file('file');
+            $mime = $f->getMimeType() ?: $f->getClientMimeType();
+            $path = $f->store('livechat/' . date('Y/m'), 'public');
+
+            if ($request->boolean('voice')) {
+                $type = 'voice';
+            } elseif (str_starts_with((string) $mime, 'image/')) {
+                $type = 'image';
+            } elseif (str_starts_with((string) $mime, 'audio/')) {
+                $type = 'audio';
+            } else {
+                $type = 'file';
+            }
+
+            $data['type']                = $type;
+            $data['attachment_path']     = $path;
+            $data['attachment_name']     = $f->getClientOriginalName();
+            $data['attachment_mime']     = $mime;
+            $data['attachment_size']     = $f->getSize();
+            $data['attachment_duration'] = (int) $request->input('duration', 0) ?: null;
+        }
+
+        $msg = new ChatMessage();
+        $faq = $this->faqKey($request, $role, $conv, $text);
+        if ($faq && !in_array($faq, ['retur', 'alamat'], true)) {
+            // pertanyaan FAQ customer tetap terlihat admin
+        }
+
+        $msg->forceFill($data)->save();
+
+        Cache::forget($this->typingKey($conv, $role));
+
+        if ($role === 'customer') {
+            // pesan baru dari customer -> percakapan yang diarsipkan kembali ke daftar utama
+            DB::table(self::STATES_TABLE)->where('conv_id', $conv)->whereNotNull('archived_at')
+                ->update(['archived_at' => null, 'updated_at' => now()]);
+
+            if ($faq) {
+                $this->faqReply($conv, $faq);
+                if (in_array($faq, ['retur', 'alamat'], true)) {
+                    $this->autoReply($conv); // pemberitahuan admin offline tetap perlu untuk yang diteruskan ke admin
+                }
+            } else {
+                $this->autoReply($conv);
+            }
+        }
+
+        return response()->json(['message' => $this->formatMany([$msg])[0]]);
+    }
+
+    // balasan otomatis setiap kali customer/tamu mengirim pesan saat admin offline
+    private function autoReply(int $conv): void
+    {
+        if ($this->adminStatus()['online']) {
+            return;
+        }
+
+        $auto = new ChatMessage();
+        $auto->forceFill([
+            'customer_id' => $conv > 0 ? $conv : null,
+            'guest_id'    => $conv < 0 ? -$conv : null,
+            'sender'      => 'admin',
+            'admin_id'    => null, // tanpa admin = pesan otomatis
+            'message'     => self::AUTO_TEXT,
+            'type'        => 'text',
+            'is_read'     => 0,
+        ])->save();
+    }
+
+    private function edit(Request $request, $id, string $role, ?int $conv): JsonResponse
+    {
+        $request->validate(['message' => 'required|string|max:1000']);
+
+        $msg = $this->findOwn($id, $role, $conv);
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+        if ($msg->deleted_everyone_at || $msg->type !== 'text') {
+            return response()->json(['message' => 'Pesan ini tidak bisa diedit.'], 422);
+        }
+        if ($msg->created_at->lt(now()->subMinutes(self::EDIT_MINUTES))) {
+            return response()->json(['message' => 'Batas edit ' . self::EDIT_MINUTES . ' menit sudah lewat.'], 422);
+        }
+
+        $msg->forceFill([
+            'message'   => trim($request->input('message')),
+            'edited_at' => now(),
+        ])->save();
+
+        return response()->json(['message' => $this->formatMany([$msg])[0]]);
+    }
+
+    private function destroyMessage(Request $request, $id, string $role, ?int $conv): JsonResponse
+    {
+        $mode = $request->input('mode') === 'all' ? 'all' : 'me';
+
+        if ($mode === 'all') {
+            $msg = $this->findOwn($id, $role, $conv);
+            if (!$msg) {
+                return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+            }
+            $msg->forceFill(['deleted_everyone_at' => now()])->save();
+
+            return response()->json(['message' => $this->formatMany([$msg])[0]]);
+        }
+
+        $q = ChatMessage::where('id', $id);
+        if ($role === 'customer' && $conv !== null) {
+            $this->inConv($q, $conv);
+        }
+        $msg = $q->first();
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+
+        $msg->forceFill([$role === 'admin' ? 'hidden_admin' : 'hidden_customer' => true])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /* ================================================================
+     *  HELPER
+     * ================================================================ */
+
+    private function visible(int $conv, string $role)
+    {
+        return $this->inConv(ChatMessage::query(), $conv)
+            ->where($role === 'admin' ? 'hidden_admin' : 'hidden_customer', false);
+    }
+
+    private function findOwn($id, string $role, ?int $conv): ?ChatMessage
+    {
+        $q = ChatMessage::where('id', $id)->where('sender', $role);
+
+        if ($role === 'customer') {
+            $this->inConv($q, (int) $conv);
+        } else {
+            $q->where('admin_id', Auth::id());
+        }
+
+        return $q->first();
+    }
+
+    private function typingKey(int $conv, string $role): string
+    {
+        return 'livechat_typing_' . $conv . '_' . $role;
+    }
+
+    private function touchAdmin(): void
+    {
+        Cache::put(self::CACHE_KEY, [
+            'at'   => now()->timestamp,
+            'name' => $this->userName(Auth::user()) ?? 'Admin',
+        ], now()->addDays(7));
+    }
+
+    private function adminStatus(?int $conv = null, string $role = 'customer'): array
+    {
+        $seen = Cache::get(self::CACHE_KEY);
+        $ago  = $seen ? max(0, now()->timestamp - $seen['at']) : null;
+        $name = $seen['name'] ?? null;
+
+        if ($conv && $role === 'customer') {
+            $last = $this->inConv(ChatMessage::query(), $conv)
+                ->where('sender', 'admin')
+                ->whereNotNull('admin_id')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($last) {
+                $replied = $this->userName(User::find($last->admin_id));
+                if ($replied) {
+                    $name = $replied;
+                }
+            }
+        }
+
+        return [
+            'online'      => $seen ? $ago <= self::ONLINE_SECONDS : false,
+            'seconds_ago' => $ago,
+            'name'        => $name,
+        ];
+    }
+
+    private function userName($user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+        return $user->name ?? $user->nama ?? null;
+    }
+
+    private function iso($value): ?string
+    {
+        return $value ? \Illuminate\Support\Carbon::parse($value)->toIso8601String() : null;
+    }
+
+    private function statusOf(ChatMessage $m): string
+    {
+        if ($m->read_at) {
+            return 'read';
+        }
+        if ($m->delivered_at) {
+            return 'delivered';
+        }
+        return 'sent';
+    }
+
+    private function stateOf(ChatMessage $m): array
+    {
+        $deleted = !is_null($m->deleted_everyone_at);
+
+        return [
+            'status'       => $this->statusOf($m),
+            'message'      => $deleted ? '' : (string) $m->message,
+            'edited'       => !is_null($m->edited_at),
+            'deleted'      => $deleted,
+            'delivered_at' => $this->iso($m->delivered_at),
+            'read_at'      => $this->iso($m->read_at),
+            'address_confirmed' => !is_null($m->address_confirmed_at),
+        ];
+    }
+
+    private function previewText(ChatMessage $m): string
+    {
+        if ($m->deleted_everyone_at) {
+            return 'Pesan dihapus';
+        }
+
+        switch ($m->type) {
+            case 'image':   return 'Foto';
+            case 'voice':   return 'Pesan suara';
+            case 'audio':   return 'Audio';
+            case 'file':    return 'Dokumen';
+            case 'sticker': return 'Stiker';
+            case 'product': return 'Produk';
+            case 'order_confirm': return 'Konfirmasi pesanan';
+            case 'order_summary': return 'Ringkasan pesanan';
+            case 'bot_faq':       return 'Bantuan';
+            case 'order_cancel':  return 'Pembatalan pesanan';
+            default:        return (string) $m->message;
+        }
+    }
+
+    /* ---------- produk ---------- */
+
+    // nama kolom nama produk (menyesuaikan tabel Anda)
+    private function productNameColumn(): ?string
+    {
+        $table = (new Produk())->getTable();
+        foreach (['nama_produk', 'nama', 'name'] as $col) {
+            if (Schema::hasColumn($table, $col)) {
+                return $col;
+            }
+        }
+        return null;
+    }
+
+    // data kartu produk yang dikirim ke JS
+    private function productCard($p): array
+    {
+        return [
+            'id'    => (int) $p->id,
+            'name'  => (string) ($p->nama_produk ?? $p->nama ?? $p->name ?? 'Produk'),
+            'price' => (int) round((float) ($p->harga ?? $p->price ?? 0)),
+            'image' => $this->productImage($p),
+            'url'   => route('produk.detail', $p->id),
+        ];
+    }
+
+    // URL foto produk: kolom foto di tabel produk, atau foto pertama di tabel foto_produk.
+    // Otomatis cari file di storage/app/public (symlink) lalu beberapa folder di public/.
+    private function productImage($p): ?string
+    {
+        $raw = $p->foto ?? $p->gambar ?? $p->image ?? null;
+
+        if (!$raw) {
+            try {
+                $raw = DB::table('foto_produk')->where('produk_id', $p->id)->orderBy('id')->value('foto');
+            } catch (\Throwable $e) {
+                $raw = null;
+            }
+        }
+
+        if (!$raw) {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+
+        // bersihin prefix yang sering kebawa
+        $raw = ltrim($raw, '/');
+        $raw = preg_replace('#^(public/|storage/)#', '', $raw);
+
+        // cari otomatis file-nya di subfolder public/ dan storage/app/public/
+        $pub = str_replace('\\', '/', public_path());
+        $sto = str_replace('\\', '/', storage_path('app/public'));
+
+        $patterns = [
+            $pub . '/' . $raw,
+            $pub . '/*/' . $raw,
+            $pub . '/*/*/' . $raw,
+            $pub . '/*/*/*/' . $raw,
+            $sto . '/' . $raw,
+            $sto . '/*/' . $raw,
+            $sto . '/*/*/' . $raw,
+        ];
+
+        foreach ($patterns as $pattern) {
+            $hits = glob($pattern);
+            if (!empty($hits)) {
+                $file = str_replace('\\', '/', $hits[0]);
+
+                if (str_starts_with($file, $pub . '/')) {
+                    return asset(substr($file, strlen($pub) + 1));
+                }
+                if (str_starts_with($file, $sto . '/')) {
+                    return asset('storage/' . substr($file, strlen($sto) + 1));
+                }
+            }
+        }
+
+        // fallback
+        return asset('storage/' . $raw);
+    }
+
+    private function orderCard($o): array
+    {
+        $details = $o->details ?? collect();
+        $first   = $details->first();
+        $prod    = $first->produk ?? null;
+
+        $name = $first ? (string) ($prod->nama_produk ?? $first->nama_produk ?? 'Produk') : 'Pesanan';
+        if ($details->count() > 1) {
+            $name .= ' +' . ($details->count() - 1) . ' lainnya';
+        }
+
+        $qty = (int) $details->sum(fn ($d) => (int) ($d->qty ?? $d->jumlah ?? $d->quantity ?? 1));
+        $u   = $o->user;
+
+        return [
+            'id'      => (int) $o->id,
+            'status'  => $this->statusLabel($o->status ?? ''),
+            'phase'   => $this->orderPhase($o),
+            'code'    => (string) ($o->kode_pesanan ?: ('#' . $o->id)),
+            'product' => $name,
+            'image'   => $prod ? $this->productImage($prod) : null,
+            'items'   => max($qty, $details->count()),
+            'total'   => (int) round((float) $o->total_harga),
+            'phone'   => (string) ($u->hp ?? $u->no_hp ?? $u->phone ?? $u->telepon ?? ''),
+            'address' => (string) ($o->alamat ?: ($u->alamat ?? '')),
+        ];
+    }
+/* ---------- format JSON ---------- */
+
+    private function formatMany($messages): array
+    {
+        $messages = collect($messages);
+
+        $replyIds = $messages->pluck('reply_to_id')->filter()->unique();
+        $replies  = $replyIds->isNotEmpty()
+            ? ChatMessage::whereIn('id', $replyIds)->get()->keyBy('id')
+            : collect();
+
+        $adminIds = $messages->pluck('admin_id')
+            ->merge($replies->pluck('admin_id'))
+            ->filter()
+            ->unique();
+
+        $admins = $adminIds->isNotEmpty()
+            ? User::whereIn('id', $adminIds)->get()->keyBy('id')
+            : collect();
+
+        $productIds = $messages->pluck('product_id')->filter()->unique();
+        $products   = $productIds->isNotEmpty()
+            ? Produk::whereIn('id', $productIds)->get()->keyBy('id')
+            : collect();
+
+        $orderIds = $messages->whereIn('type', ['order_confirm', 'order_summary', 'order_cancel'])->pluck('pesanan_id')->filter()->unique();
+        $orders   = $orderIds->isNotEmpty()
+            ? Pesanan::with('details.produk')->whereIn('id', $orderIds)->get()->keyBy('id')
+            : collect();
+
+        return $messages->map(fn ($m) => $this->shape($m, $admins, $replies, $products, $orders))->values()->all();
+    }
+
+    private function adminLabel($adminId, $admins): string
+    {
+        if (!$adminId) {
+            return self::AUTO_NAME;
+        }
+        return $this->userName($admins->get($adminId)) ?? 'Admin';
+    }
+
+    private function shape(ChatMessage $m, $admins, $replies, $products, $orders): array
+    {
+        $deleted   = !is_null($m->deleted_everyone_at);
+        $adminName = $m->sender === 'admin' ? $this->adminLabel($m->admin_id, $admins) : null;
+
+        $attachment = null;
+        if (!$deleted && !in_array($m->type, ['text', 'product'], true) && $m->attachment_path) {
+            $attachment = [
+                'url'      => asset('storage/' . $m->attachment_path),
+                'name'     => $m->attachment_name,
+                'size'     => (int) $m->attachment_size,
+                'mime'     => $m->attachment_mime,
+                'duration' => (int) $m->attachment_duration,
+            ];
+        }
+
+        $product = null;
+        if (!$deleted && $m->type === 'product' && $m->product_id) {
+            $p       = $products->get($m->product_id);
+            $product = $p ? $this->productCard($p) : ['missing' => true];
+        }
+
+        $order = null;
+        if (!$deleted && in_array($m->type, ['order_confirm', 'order_summary', 'order_cancel'], true)) {
+            $o     = $orders->get($m->pesanan_id);
+            $order = $o ? $this->orderCard($o) : ['missing' => true];
+        }
+
+$reply = null;
+        if (!$deleted && $m->reply_to_id && ($r = $replies->get($m->reply_to_id))) {
+            $rDeleted = !is_null($r->deleted_everyone_at);
+            $reply = [
+                'id'         => $r->id,
+                'sender'     => $r->sender,
+                'message'    => $rDeleted ? '' : $this->previewText($r),
+                'deleted'    => $rDeleted,
+                'admin_name' => $r->sender === 'admin' ? $this->adminLabel($r->admin_id, $admins) : null,
+            ];
+        }
+
+        return array_merge($this->stateOf($m), [
+            'id'         => $m->id,
+            'sender'     => $m->sender,
+            'admin_name' => $adminName, 'is_bot' => ($m->sender === 'admin' && empty($m->admin_id)),
+            'type'       => $m->type ?: 'text',
+            'attachment' => $attachment,
+            'product'    => $product,
+            'order'      => $order,
+            'reply'      => $reply,
+            'created_at' => $this->iso($m->created_at),
+        ]);
+    }
+
+    /* ---------- info kontak (panel di halaman admin) ---------- */
+
+    public function adminCustomerInfo($customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $state = DB::table(self::STATES_TABLE)->where('conv_id', $conv)->first();
+
+        $common = [
+            'conv_id'        => $conv,
+            'first_chat'     => $this->iso($this->inConv(ChatMessage::where('hidden_admin', false), $conv)->min('created_at')),
+            'total_messages' => $this->inConv(ChatMessage::where('hidden_admin', false), $conv)->count(),
+            'blocked'        => (bool) ($state && $state->blocked_at),
+            'blocked_reason' => $state->blocked_reason ?? null,
+        ];
+
+        // tamu (id negatif)
+        if ($conv < 0) {
+            $g = DB::table('chat_guests')->where('id', -$conv)->first();
+
+            return response()->json($common + [
+                'type' => 'guest',
+                'name' => 'Tamu – ' . ($g->nama ?? 'Tamu'),
+            ]);
+        }
+
+        $u = User::find($conv);
+
+        // akun customer sudah dihapus
+        if (!$u) {
+            $snap = DB::table(self::SNAPSHOT_TABLE)->where('conv_id', $conv)->first();
+
+            return response()->json($common + [
+                'type'  => 'deleted',
+                'name'  => $this->deletedLabel($snap),
+                'email' => $snap->email ?? null,
+            ]);
+        }
+
+        // customer terdaftar
+        $orders = $this->orderStats((int) $u->id);
+
+        return response()->json($common + [
+            'type'         => 'customer',
+            'name'         => $this->userName($u) ?? 'Customer',
+            'email'        => $u->email ?? null,
+            'phone'        => $u->hp ?? $u->no_hp ?? $u->phone ?? $u->telepon ?? null,
+            'address'      => $u->alamat ?? $u->address ?? null,
+            'photo'        => $this->userPhoto($u),
+            'joined'       => $this->iso($u->created_at),
+            'total_orders' => $orders['count'],
+            'last_order'   => $orders['last'],
+        ]);
+    }
+
+    // foto profil user: cek storage/app/public lalu public/
+    private function userPhoto($u): ?string
+    {
+        $raw = $u->foto ?? $u->photo ?? $u->avatar ?? $u->gambar ?? null;
+        if (!$raw) {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+
+        $raw = preg_replace('#^(public/|storage/)#', '', ltrim($raw, '/'));
+
+        if (is_file(storage_path('app/public/' . $raw))) {
+            return asset('storage/' . $raw);
+        }
+        if (is_file(public_path($raw))) {
+            return asset($raw);
+        }
+        foreach (glob(public_path('*/' . $raw)) ?: [] as $hit) {
+            return asset(substr(str_replace('\\', '/', $hit), strlen(str_replace('\\', '/', public_path())) + 1));
+        }
+
+        return null;
+    }
+
+    // jumlah & tanggal pesanan terakhir; otomatis mencari tabel pesanan yang ada
+    private function orderStats(int $userId): array
+    {
+        $out = ['count' => 0, 'last' => null];
+
+        try {
+            foreach (['orders', 'order', 'pesanan', 'transaksi', 'transactions'] as $table) {
+                if (!Schema::hasTable($table)) {
+                    continue;
+                }
+                foreach (['user_id', 'customer_id', 'id_user'] as $col) {
+                    if (!Schema::hasColumn($table, $col)) {
+                        continue;
+                    }
+                    $q            = DB::table($table)->where($col, $userId);
+                    $out['count'] = (clone $q)->count();
+                    $out['last']  = $this->iso((clone $q)->max('created_at'));
+                    return $out;
+                }
+            }
+        } catch (\Throwable $e) {
+            // struktur tabel beda: panel tetap jalan tanpa data pesanan
+        }
+
+        return $out;
+    }
+}

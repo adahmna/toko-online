@@ -83,6 +83,14 @@ class KategoriController extends Controller
      */
     public function destroy(string $id)
     {
+        // Blokir hapus kategori kalau masih ada produk yang stoknya tersedia
+        $produkBerstok = \App\Models\Produk::where('kategori_id', $id)->where('stok', '>', 0)->get(['nama_produk', 'stok']);
+        if ($produkBerstok->isNotEmpty()) {
+            $pesan = 'Kategori tidak bisa dihapus karena masih ada produk dengan stok: '
+                . $produkBerstok->map(fn ($x) => $x->nama_produk . ' (' . $x->stok . ')')->implode(', ')
+                . '. Kosongkan stok produk itu dulu.';
+            return redirect()->back()->with('error', $pesan)->with('msgError', $pesan);
+        }
         $kategori = Kategori::findOrFail($id);
 
         if ($kategori->produk()->count() > 0) {

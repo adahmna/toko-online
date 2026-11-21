@@ -1,8 +1,52 @@
-﻿@extends('v_layouts.app')
+@extends('v_layouts.app')
 
 @section('judul', 'Tentang Kami')
 
 @section('content')
+
+{{-- ===== KOTAK V2: jarak dalam seragam, tanpa scrollbar dalam ===== --}}
+<style>
+    .panduan-fix {
+        overflow-x: clip !important;
+        overflow-y: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    .kotak-scroll-fix {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        box-sizing: border-box !important;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var area = document.querySelector('.panduan-fix');
+    if (!area) return;
+
+    function dalamLayerMelayang(el) {
+        for (var n = el; n && n !== document.body; n = n.parentElement) {
+            var pos = getComputedStyle(n).position;
+            if (pos === 'fixed' || pos === 'sticky') return true;
+        }
+        return false;
+    }
+
+    area.querySelectorAll('div, section, article, ul, ol').forEach(function (el) {
+        if (dalamLayerMelayang(el)) return;
+        if (el.closest('header, footer, nav, #responsive-nav, .menu-header, [class*="chat"], [id*="chat"], [class*="modal"]')) return;
+        var cs = getComputedStyle(el);
+        if (cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+            el.classList.add('kotak-scroll-fix');
+        }
+    });
+});
+</script>
+{{-- ===== END KOTAK V2 ===== --}}
+
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">

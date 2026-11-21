@@ -19,7 +19,7 @@
             </div>
 
             {{-- ===== JAM & TANGGAL REAL-TIME ===== --}}
-            <div class="text-right ml-3">
+            <div class="text-right ml-auto pl-3">
                 <div id="jamRealtime" style="font-size: 1.4rem; font-weight: bold; line-height: 1;"></div>
                 <div id="tanggalRealtime" style="font-size: 0.85rem; color: #444;"></div>
             </div>

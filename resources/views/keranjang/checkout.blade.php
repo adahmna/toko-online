@@ -15,36 +15,38 @@
             </div>
             <div class="card-body">
 
-                <table class="table table-bordered">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>No</th>
-                            <th>Nama Produk</th>
-                            <th>Harga</th>
-                            <th>Jumlah</th>
-                            <th>Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($keranjangs as $i => $item)
-                        <tr>
-                            <td>{{ $i + 1 }}</td>
-                            <td>{{ $item->produk->nama_produk ?? '-' }}</td>
-                            <td>Rp. {{ number_format($item->harga, 0, ',', '.') }}</td>
-                            <td>{{ $item->jumlah }}</td>
-                            <td>Rp. {{ number_format($item->subtotal, 0, ',', '.') }}</td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                    <tfoot>
-                        <tr class="table-success">
-                            <th colspan="4" class="text-end">TOTAL:</th>
-                            <th>Rp. {{ number_format($total, 0, ',', '.') }}</th>
-                        </tr>
-                    </tfoot>
-                </table>
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Nama Produk</th>
+                                <th>Harga</th>
+                                <th>Jumlah</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($keranjangs as $i => $item)
+                            <tr>
+                                <td>{{ $i + 1 }}</td>
+                                <td>{{ $item->produk->nama_produk ?? '-' }}</td>
+                                <td>Rp. {{ number_format($item->harga, 0, ',', '.') }}</td>
+                                <td>{{ $item->jumlah }}</td>
+                                <td>Rp. {{ number_format($item->subtotal, 0, ',', '.') }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-success">
+                                <th colspan="4" class="text-end">TOTAL:</th>
+                                <th>Rp. {{ number_format($total, 0, ',', '.') }}</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
 
-                <div class="d-flex justify-content-between mt-3">
+                <div class="d-flex justify-content-between mt-3" style="flex-wrap: wrap; gap: 8px;">
                     <a href="{{ route('customer.keranjang.index') }}" class="btn btn-secondary">
                         ← Kembali ke Keranjang
                     </a>

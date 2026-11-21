@@ -3,6 +3,45 @@
 @section('judul', $judul)
 
 @section('content')
+
+{{-- ===== KARIR: teks kecil rata kanan-kiri ===== --}}
+<style>
+    p:not(.text-center):not(header *):not(footer *):not(nav *):not(#responsive-nav *),
+    li:not(.text-center):not(header *):not(footer *):not(nav *):not(#responsive-nav *),
+    small:not(header *):not(footer *):not(nav *),
+    td:not(.text-center):not(header *):not(footer *) {
+        text-align: justify !important;
+        text-justify: inter-word;
+        hyphens: auto;
+    }
+</style>
+{{-- ===== END KARIR RATA KANAN-KIRI ===== --}}
+
+{{-- ===== KARIR: bar atas jangan rata kanan-kiri ===== --}}
+<style>
+    .no-justify, .no-justify * {
+        text-align: left !important;
+        text-align-last: auto !important;
+        text-justify: auto !important;
+        hyphens: none !important;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var n;
+    while ((n = w.nextNode())) {
+        if (n.nodeValue.indexOf('Selamat datang di') === -1) continue;
+        var el = n.parentElement;
+        for (var i = 0; i < 3 && el && el !== document.body; i++) {
+            if (el.textContent.length > 200) break;
+            el.classList.add('no-justify');
+            el = el.parentElement;
+        }
+    }
+});
+</script>
+{{-- ===== END KARIR BAR ATAS ===== --}}
 <div class="col-md-12">
 
     @if(session('success'))

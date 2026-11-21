@@ -106,6 +106,7 @@
 .tk-grid::-webkit-scrollbar {
     width: 6px;
 }
+
 .tk-grid::-webkit-scrollbar-thumb {
     background: #ddd;
     border-radius: 3px;
@@ -152,12 +153,49 @@
     .tk-grid .product-thumb {
         height: 220px;
     }
+
     .tk-grid .tk-card:nth-child(3n+1) {
         clear: none;
     }
 
     .tk-grid .tk-card:nth-child(2n+1) {
         clear: left;
+    }
+}
+
+/* ===== Margin kiri-kanan di HP/tablet (konten sebelumnya menempel ke tepi layar) ===== */
+@media (max-width: 991px) {
+    .tk {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+}
+
+@media (max-width: 767px) {
+    .tk-controls {
+        width: 100%;
+    }
+
+    .tk-searchbox {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .tk-searchbox input {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .tk-grid {
+        margin: 0 -6px;
+        padding: 10px 0;
+        max-height: none;
+        overflow: visible;
+    }
+
+    .tk-grid .tk-card {
+        padding: 0 6px;
+        margin-bottom: 14px;
     }
 }
 </style>
@@ -238,7 +276,8 @@
                             </form>
 
                             @auth
-                            <form action="{{ route('wishlist.store', $row->id) }}" method="post" style="display:inline-block;" title="Tambah ke Wishlist">
+                            <form action="{{ route('wishlist.store', $row->id) }}" method="post"
+                                style="display:inline-block;" title="Tambah ke Wishlist">
                                 @csrf
                                 <button type="submit" class="main-btn icon-btn">
                                     <i class="fa fa-heart-o"></i>
@@ -246,7 +285,8 @@
                             </form>
                             @endauth
 
-                            <form action="{{ route('bandingkan.store', $row->id) }}" method="post" style="display:inline-block;" title="Tambah ke Perbandingan">
+                            <form action="{{ route('bandingkan.store', $row->id) }}" method="post"
+                                style="display:inline-block;" title="Tambah ke Perbandingan">
                                 @csrf
                                 <button type="submit" class="main-btn icon-btn">
                                     <i class="fa fa-balance-scale"></i>

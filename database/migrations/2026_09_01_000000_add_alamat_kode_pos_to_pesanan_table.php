@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('pesanan', function (Blueprint $table) {
-            $table->string('alamat')->nullable()->after('id_kota_tujuan');
-            $table->string('kode_pos', 10)->nullable()->after('alamat');
+            $table->string('alamat')->nullable();
+            $table->string('kode_pos', 10)->nullable();
         });
     }
 

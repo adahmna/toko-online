@@ -89,6 +89,92 @@
         </div>
     </div>
 
+
+<!-- status-proses-patch -->
+<script>
+(function () {
+    var SUKSES = /^\s*(Proses|Diproses|Paid|Dikirim|Selesai)\s*$/i;
+
+    function leafBr(el) {
+        for (var j = 0; j < el.children.length; j++) {
+            if (el.children[j].tagName !== 'BR') return false;
+        }
+        return true;
+    }
+
+    function temukan(re, syarat) {
+        var els = document.body.querySelectorAll('*');
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+            if (leafBr(el) && re.test(el.textContent) && (!syarat || syarat(el))) return el;
+        }
+        return null;
+    }
+
+    function statusSukses() {
+        return temukan(SUKSES, function (el) {
+            return el.parentElement && /status/i.test(el.parentElement.textContent);
+        });
+    }
+
+    function buatCentang() {
+        var ic = document.createElement('div');
+        ic.setAttribute('data-ikon-sukses', '1');
+        ic.style.cssText = 'width:90px;height:90px;margin:0 auto 16px;transform:scale(0);transition:transform .45s cubic-bezier(.34,1.56,.64,1)';
+        ic.innerHTML = '<svg viewBox="0 0 52 52" width="90" height="90">' +
+            '<circle cx="26" cy="26" r="25" fill="#28a745"/>' +
+            '<path class="cek" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M14 27l8 8 16-17" ' +
+            'style="stroke-dasharray:40;stroke-dashoffset:40;transition:stroke-dashoffset .4s ease .3s"/></svg>';
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                ic.style.transform = 'scale(1)';
+                var p = ic.querySelector('.cek');
+                if (p) p.style.strokeDashoffset = '0';
+            });
+        });
+        return ic;
+    }
+
+    function terapkan() {
+        if (!statusSukses()) return;
+
+        var judul = temukan(/^\s*Selesaikan Pembayaranmu\s*$/i);
+        if (!judul) return; // sudah diubah / bukan halaman ini
+
+        // Cari elemen spinner: saudara sebelum judul (naik ke parent kalau perlu)
+        var node = judul, spinner = null;
+        while (node && node.parentElement && !spinner) {
+            if (node.previousElementSibling) spinner = node.previousElementSibling;
+            else node = node.parentElement;
+        }
+
+        judul.textContent = 'Pembayaran Diterima';
+
+        var teks = temukan(/pembayaran belum kami terima/i);
+        if (teks) teks.textContent = 'Pembayaran sudah kami terima. Pesananmu sedang kami proses.';
+
+        if (spinner && !spinner.hasAttribute('data-ikon-sukses')) {
+            spinner.parentNode.replaceChild(buatCentang(), spinner);
+        }
+
+        var tombol = temukan(/^\s*Bayar Sekarang\s*$/i);
+        if (tombol) {
+            var t = tombol.closest('a, button') || tombol;
+            t.style.display = 'none';
+        }
+    }
+
+    function mulai() {
+        terapkan();
+        // Kalau halaman ini polling & mengganti DOM-nya, patch tetap diterapkan ulang
+        new MutationObserver(terapkan).observe(document.body, { childList: true, subtree: true, characterData: true });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mulai);
+    else mulai();
+})();
+</script>
 </body>
 
 </html>

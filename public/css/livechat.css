@@ -163,11 +163,11 @@
 /* tombol kirim <-> mikrofon */
 .lc-mic{flex:none;width:40px;height:40px;border:0;border-radius:50%;background:var(--lc-accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .lc-mic:hover{background:var(--lc-accent-dark)}
-.lc-composer .lc-send{display:none}
+.lc-composer .lc-send{display:block;flex:none;white-space:nowrap}
 .lc-composer.has-content .lc-send{display:block}
-.lc-composer.has-content .lc-mic{display:none}
-.lc-composer.no-rec .lc-mic{display:none}
-.lc-composer.no-rec .lc-send{display:block}
+.lc-composer.has-content .lc-mic{display:flex}
+.lc-composer.no-rec .lc-mic{display:flex}
+@media(max-width:480px){.lc-composer .lc-send{padding:9px 12px}}
 .lc-row[hidden],.lc-rec[hidden]{display:none}
 
 /* perekam voice note */
@@ -216,3 +216,45 @@
 .lc input[type=file],.lc [hidden],.lcw-panel[hidden],.lcw-badge[hidden]{display:none !important}
 .lc button{font-family:inherit;line-height:1.2;box-shadow:none;text-transform:none;letter-spacing:normal}
 .lc textarea.lc-text{margin:0;box-shadow:none;height:auto}
+
+/* ===== kartu konfirmasi pesanan ===== */
+.lc-order { background:#fff; color:#2c3e50; border-radius:12px; padding:12px; width:240px; max-width:100%; font-size:13px; box-shadow:0 1px 4px rgba(0,0,0,.15); text-align:left; }
+.lc-order-head { font-weight:700; margin-bottom:8px; }
+.lc-order-row { display:flex; gap:10px; align-items:center; margin-bottom:8px; }
+.lc-order-thumb { flex:none; width:52px; height:52px; border-radius:8px; background:#f1f1f1 center/cover no-repeat; }
+.lc-order-name { font-weight:600; line-height:1.25; word-break:break-word; }
+.lc-order-sub { color:#888; font-size:12px; margin-top:2px; }
+.lc-order-meta { border-top:1px solid #eee; padding-top:8px; }
+.lc-order-meta > div { display:flex; gap:8px; margin-bottom:4px; }
+.lc-order-meta small { flex:none; width:72px; color:#888; }
+.lc-order-meta span { word-break:break-word; min-width:0; }
+.lc-order-btn { display:block; width:100%; margin-top:10px; padding:9px; border:0; border-radius:8px; background:#f4663f; color:#fff; font-weight:600; cursor:pointer; }
+.lc-order-btn:disabled { opacity:.6; cursor:default; }
+.lc-order-done, .lc-order-wait { margin-top:10px; text-align:center; font-weight:600; }
+.lc-order-done { color:#2e7d32; }
+.lc-order-wait { color:#888; font-weight:500; }
+
+/* ===== sapaan bot: ringkasan pesanan, FAQ, chip ===== */
+.lc-osum { background:#fff; color:#2c3e50; border-radius:12px; padding:12px; width:250px; max-width:100%; font-size:13px; box-shadow:0 1px 4px rgba(0,0,0,.15); text-align:left; }
+.lc-osum-top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+.lc-osum-top b { font-size:14px; }
+.lc-osum-st { color:#888; font-size:12px; text-align:right; }
+.lc-osum-foot { border-top:1px solid #eee; margin-top:8px; padding-top:8px; color:#888; font-size:12px; }
+.lc-osum-foot a { color:#1a73e8; }
+.lc-faq { background:#fff; color:#2c3e50; border-radius:12px; width:250px; max-width:100%; box-shadow:0 1px 4px rgba(0,0,0,.15); overflow:hidden; text-align:left; }
+.lc-faq-title { font-weight:700; padding:12px; border-bottom:1px solid #eee; }
+.lc-faq-item { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; text-align:left; border:0; border-bottom:1px solid #f0f0f0; background:#fff; padding:11px 12px; font-size:13px; color:#2c3e50; cursor:pointer; }
+.lc-faq-item:last-child { border-bottom:0; }
+.lc-faq-item:hover { background:#fff3ee; }
+.lc-bot-note { font-size:11px; color:#999; margin-top:6px; }
+.lc-chips { display:flex; gap:6px; overflow-x:auto; white-space:nowrap; padding:6px 8px 0; }
+.lc-chip { flex:none; border:0; border-radius:16px; background:#f1f1f1; padding:6px 12px; font-size:12px; font-weight:600; color:#2c3e50; cursor:pointer; }
+.lc-chip:hover { background:#ffe9e1; }
+
+/* ===== jawaban otomatis bot ===== */
+.lc-bot-text { white-space:pre-line; word-break:break-word; }
+.lc-cancel-btn { display:block; width:100%; margin-top:10px; padding:9px; border:0; border-radius:8px; background:#e0452b; color:#fff; font-weight:600; cursor:pointer; }
+.lc-cancel-btn:disabled { opacity:.6; cursor:default; }
+
+.lc-cancel-now { display:block; width:100%; margin-top:10px; padding:9px; border:0; border-radius:8px; background:#e0452b; color:#fff; font-weight:600; cursor:pointer; }
+.lc-cancel-now:disabled { opacity:.6; cursor:default; }

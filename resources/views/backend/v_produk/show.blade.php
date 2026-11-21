@@ -55,7 +55,7 @@
 
                             {{-- Daftar foto yang sudah ada --}}
                             <div id="foto-container">
-                                @foreach($show->gambar as $gambar)
+                                @foreach($show->gambar->where('foto', '!=', $show->foto) as $gambar)
                                 <div class="row mb-2 align-items-center">
                                     <div class="col-md-8">
                                         <img src="{{ asset('storage/img-produk/' . $gambar->foto) }}" width="100%"

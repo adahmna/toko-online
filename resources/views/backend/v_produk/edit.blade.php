@@ -57,7 +57,7 @@
                                     <label>Klik Disini Untuk Menambah Foto</label>
 
                                     <div id="foto-container">
-                                        @foreach($edit->gambar as $gambar)
+                                        @foreach($edit->gambar->where('foto', '!=', $edit->foto) as $gambar)
                                         <div class="row mb-2 align-items-center" id="foto-row-{{ $gambar->id }}">
                                             <div class="col-md-8">
                                                 <img src="{{ asset('storage/img-produk/' . $gambar->foto) }}"
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function hapusFoto(id) {
     if (!confirm('Yakin ingin menghapus foto ini?')) return;
 
-    fetch(`/foto-produk/${id}`, {
+    fetch(`/backend/foto-produk/${id}`, {
             method: 'DELETE',
             headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),

@@ -1,0 +1,110 @@
+@media (max-width: 768px) {
+    html, body { overflow-x: hidden; }
+
+    /* ── RIWAYAT BELANJA: rata tengah, ikut lebar layar ── */
+    .riwayat-wrapper {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        position: relative;
+        left: 50%;
+        margin-left: -50vw !important;
+        margin-right: 0 !important;
+        padding: 0 14px !important;
+        box-sizing: border-box;
+    }
+    .riwayat-header { justify-content: center; }
+
+    /* ── BERANDA: ukuran tulisan di dalam banner ── */
+    .carousel-caption h1, .carousel-caption h2, .carousel-caption h3,
+    [class*="slider"] h1, [class*="slider"] h2, [class*="slider"] h3,
+    [class*="hero"] h1, [class*="hero"] h2, [class*="hero"] h3,
+    [class*="banner"] h1, [class*="banner"] h2, [class*="banner"] h3 {
+        font-size: clamp(18px, 6vw, 28px) !important;
+        line-height: 1.2 !important;
+    }
+    .carousel-caption p, [class*="slider"] p, [class*="hero"] p, [class*="banner"] p {
+        font-size: clamp(11px, 3.2vw, 14px) !important;
+    }
+
+    /* ── BERANDA: produk terlaris jangan nempel layar ── */
+    [class*="terlaris"], [class*="best-seller"], [class*="bestseller"] {
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+        box-sizing: border-box;
+    }
+
+    /* ── FOOTER: Akun Saya & Layanan Pelanggan berdampingan ── */
+    footer .row { display: flex; flex-wrap: wrap; }
+    footer .row > [class*="col-"] { flex: 0 0 100%; max-width: 100%; }
+    footer .row > [class*="col-"]:nth-child(2),
+    footer .row > [class*="col-"]:nth-child(3) {
+        flex: 0 0 50%;
+        max-width: 50%;
+    }
+
+    /* ── FOOTER: copyright di tengah ── */
+    footer [class*="copyright"], footer [class*="bottom"],
+    footer [class*="copyright"] p, footer [class*="bottom"] p {
+        text-align: center !important;
+        width: 100%;
+    }
+}
+/* ── BERANDA: jarak produk dari tepi layar ── */
+@media (max-width: 768px) {
+    .container, .container-fluid {
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        box-sizing: border-box;
+    }
+
+    /* cegah padding dobel kalau container ada di dalam container */
+    .container .container, .container-fluid .container,
+    .container .container-fluid, .container-fluid .container-fluid {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    [class*="produk"], [class*="product"] {
+        box-sizing: border-box;
+    }
+    [class*="produk"] img, [class*="product"] img {
+        max-width: 100%;
+    }
+}
+
+/* ── BERANDA: grid produk jangan nempel tepi layar ── */
+@media (max-width: 768px) {
+    div:has(> [class*="col"] img):not(footer *) {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        box-sizing: border-box;
+        max-width: 100%;
+    }
+
+    /* jarak antar dua kolom produk */
+    div:has(> [class*="col"] img):not(footer *) > [class*="col"] {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+}
+
+/* ── OVERRIDE: jarak produk lebih kecil + teks footer rata kanan-kiri ── */
+@media (max-width: 768px) {
+    div:has(> [class*="col"] img):not(footer *) {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    div:has(> [class*="col"] img):not(footer *) > [class*="col"] {
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+    }
+
+    /* teks di bawah E-SHOP */
+    footer .row > [class*="col-"]:first-child p,
+    footer [class*="about"] p {
+        text-align: justify !important;
+        text-justify: inter-word;
+    }
+}

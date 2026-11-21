@@ -135,6 +135,36 @@
         background: #9E9E9E;
         cursor: not-allowed;
     }
+
+    .table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    @media (max-width: 575px) {
+        body {
+            padding: 10px;
+        }
+
+        table.order-table th,
+        table.order-table td {
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+
+        .payment-section {
+            padding: 16px 12px;
+        }
+
+        .footer-btns {
+            padding: 12px;
+        }
+
+        .btn-pay {
+            width: 100%;
+            justify-content: center;
+        }
+    }
     </style>
 </head>
 
@@ -143,32 +173,34 @@
     <div class="card">
         <div class="card-header">Konfirmasi Pesanan & Pembayaran</div>
 
-        <table class="order-table">
-            <thead>
-                <tr>
-                    <th style="width:40px">No</th>
-                    <th>Nama Produk</th>
-                    <th>Harga</th>
-                    <th style="text-align:center;">Jumlah</th>
-                    <th>Subtotal</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($pesanan->detailPesanan as $index => $detail)
-                <tr>
-                    <td>{{ $index + 1 }}</td>
-                    <td>{{ $detail->nama_produk }}</td>
-                    <td>Rp {{ number_format($detail->harga, 0, ',', '.') }}</td>
-                    <td style="text-align:center;">{{ $detail->jumlah }}</td>
-                    <td>Rp {{ number_format($detail->subtotal, 0, ',', '.') }}</td>
-                </tr>
-                @endforeach
-                <tr class="total-row">
-                    <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
-                    <td style="font-weight: bold;">Rp {{ number_format($pesanan->total_harga, 0, ',', '.') }}</td>
-                </tr>
-            </tbody>
-        </table>
+        <div class="table-scroll">
+            <table class="order-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px">No</th>
+                        <th>Nama Produk</th>
+                        <th>Harga</th>
+                        <th style="text-align:center;">Jumlah</th>
+                        <th>Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($pesanan->detailPesanan as $index => $detail)
+                    <tr>
+                        <td>{{ $index + 1 }}</td>
+                        <td>{{ $detail->nama_produk }}</td>
+                        <td>Rp {{ number_format($detail->harga, 0, ',', '.') }}</td>
+                        <td style="text-align:center;">{{ $detail->jumlah }}</td>
+                        <td>Rp {{ number_format($detail->subtotal, 0, ',', '.') }}</td>
+                    </tr>
+                    @endforeach
+                    <tr class="total-row">
+                        <td colspan="4" style="text-align: right; font-weight: bold;">TOTAL:</td>
+                        <td style="font-weight: bold;">Rp {{ number_format($pesanan->total_harga, 0, ',', '.') }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
 
         <div class="payment-section">
             <div class="payment-title">
@@ -199,28 +231,17 @@
     </script>
 
     <script>
-    document.getElementById('pay-button').addEventListener('click', function() {
-        const btn = this;
-        btn.disabled = true;
-        btn.innerHTML = 'Memuat...';
+    const payBtn = document.getElementById('pay-button');
+    const snapToken = @json($snapToken);
 
-        snap.pay('{{ $snapToken }}', {
-            onSuccess: function(result) {
-                window.location.href = "{{ route('customer.checkout.selesai', $pesanan->id) }}";
-            },
-            onPending: function(result) {
-                window.location.href = "{{ route('customer.checkout.selesai', $pesanan->id) }}";
-            },
-            onError: function(result) {
-                alert('Pembayaran gagal, silakan coba lagi.');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Bayar Sekarang';
-            },
-            onClose: function() {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> Bayar Sekarang';
-            }
-        });
+    payBtn.addEventListener('click', function() {
+        if (!snapToken) {
+            alert('Token pembayaran kosong. Coba refresh halaman.');
+            return;
+        }
+        payBtn.disabled = true;
+        payBtn.innerHTML = 'Memuat...';
+        window.location.href = 'https://app.sandbox.midtrans.com/snap/v2/vtweb/' + snapToken;
     });
     </script>
 </body>

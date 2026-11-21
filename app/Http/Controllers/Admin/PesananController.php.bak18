@@ -1,0 +1,448 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Pesanan;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\StatusPesananMail;
+use Illuminate\Support\Facades\Log;
+
+class PesananController extends Controller
+{
+    public function index()
+    {
+        $pesanan = Pesanan::with('user')->latest()->get();
+        return view('backend.pesanan.index', compact('pesanan'));
+    }
+
+    /**
+     * Halaman "Detail Pesanan" — mirip tampilan di modul.
+     */
+    public function detail($id)
+    {
+        $item = Pesanan::with(['user', 'details.produk'])->findOrFail($id);
+        return view('backend.pesanan.detail', compact('item'));
+    }
+
+    /**
+     * Halaman cetak pesanan (tampilan polos untuk di-print).
+     */
+    public function cetak($id)
+    {
+        $item = Pesanan::with(['user', 'details.produk'])->findOrFail($id);
+        return view('backend.pesanan.cetak', compact('item'));
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'status_pesanan'    => 'required',
+            'ekspedisi'         => 'nullable|string|max:100',
+            'layanan_ekspedisi' => 'nullable|string|max:100',
+            'no_resi'           => 'nullable|string|max:100',
+            'alamat'            => 'nullable|string',
+            'kode_pos'          => 'nullable|string|max:20',
+        ]);
+
+        $pesanan         = Pesanan::findOrFail($id);
+        $pesanan->status = $request->status_pesanan;
+
+        // Simpan data ekspedisi hanya jika status = dikirim
+        if (strtolower($request->status_pesanan) === 'dikirim') {
+            if ($request->filled('ekspedisi')) {
+                $pesanan->ekspedisi = $request->ekspedisi;
+            }
+            if ($request->filled('layanan_ekspedisi')) {
+                $pesanan->layanan_ekspedisi = $request->layanan_ekspedisi;
+            }
+            $pesanan->no_resi = $request->no_resi;
+        }
+
+        // Alamat & kode pos bisa dikoreksi dari halaman detail
+        if ($request->filled('alamat')) {
+            $pesanan->alamat = $request->alamat;
+        }
+        if ($request->filled('kode_pos')) {
+            $pesanan->kode_pos = $request->kode_pos;
+        }
+
+        $pesanan->save();
+
+        // Kirim email notifikasi setelah response dikirim ke browser (non-blocking)
+        if ($pesanan->user && $pesanan->user->email) {
+            $email = $pesanan->user->email;
+            $mail  = new StatusPesananMail($pesanan);
+
+            try {
+                Mail::to($email)->send($mail);
+            } catch (\Exception $e) {
+                Log::error('[Pesanan] Gagal kirim email: ' . $e->getMessage());
+            }
+        }
+
+        // Dipanggil lewat AJAX (modal index lama) → balikin JSON
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Status pesanan berhasil diperbarui dan email notifikasi telah dikirim!',
+            ]);
+        }
+
+        // Dipanggil lewat form biasa (halaman detail) → redirect kembali
+        return redirect()
+            ->route('admin.pesanan.detail', $pesanan->id)
+            ->with('success', 'Status pesanan berhasil diperbarui dan email notifikasi telah dikirim!');
+    }
+
+    public function tracking($id)
+    {
+        $pesanan = Pesanan::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        $res = $this->trackingData($pesanan);
+
+        $res['peta']            = $this->petaPengiriman($pesanan);
+        $res['rating_logistik'] = $pesanan->rating_logistik ?? null;
+
+        $res['foto_bukti'] = \App\Models\PesananFotoBukti::where('pesanan_id', $pesanan->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($f) => [
+                'url'        => '/storage/' . ltrim($f->foto, '/'),
+                'keterangan' => $f->keterangan,
+                'waktu'      => $f->created_at->format('d M Y, H:i') . ' WIB',
+            ])
+            ->values()
+            ->all();
+        $res['bisa_rating']     = (($res['status_kurir'] ?? '') === 'DELIVERED')
+            || strtolower(trim((string) $pesanan->status)) === 'selesai';
+
+        return response()->json($res);
+    }
+
+    public function beriRatingLogistik(\Illuminate\Http\Request $request, $id)
+    {
+        $request->validate(['rating' => 'required|integer|min:1|max:5']);
+
+        $pesanan = Pesanan::where('id', $id)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
+
+        if (trim((string) $pesanan->no_resi) === '') {
+            return response()->json(['message' => 'Pesanan ini belum dikirim.'], 422);
+        }
+        if (!\Illuminate\Support\Facades\Schema::hasColumn($pesanan->getTable(), 'rating_logistik')) {
+            return response()->json(['message' => 'Kolom rating belum dibuat. Jalankan php artisan migrate.'], 500);
+        }
+
+        $pesanan->rating_logistik = (int) $request->input('rating');
+        $pesanan->save();
+
+        return response()->json(['ok' => true, 'rating' => $pesanan->rating_logistik]);
+    }
+
+    private function trackingData(Pesanan $pesanan): array
+    {
+        $dasar = [
+            'ekspedisi' => $pesanan->ekspedisi,
+            'layanan'   => $pesanan->layanan_ekspedisi,
+            'no_resi'   => $pesanan->no_resi,
+        ];
+
+        // Mode contoh: hanya di environment local, dinyalakan lewat TRACKING_DEMO=true di .env
+        if (app()->environment('local') && filter_var(env('TRACKING_DEMO', false), FILTER_VALIDATE_BOOLEAN)) {
+            return $dasar + $this->trackingContoh($pesanan);
+        }
+
+        $kurir = $this->kodeKurirBinderbyte($pesanan->ekspedisi);
+        $resi  = trim((string) $pesanan->no_resi);
+
+        if ($kurir === '' || $resi === '') {
+            return $dasar + [
+                'tersedia' => false,
+                'pesan'    => 'Nomor resi atau ekspedisi belum lengkap.',
+            ];
+        }
+
+        $cacheKey = 'tracking_' . $pesanan->id . '_' . md5($kurir . '|' . $resi);
+        $cached   = \Illuminate\Support\Facades\Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $dasar + $cached;
+        }
+
+        try {
+            $resp = \Illuminate\Support\Facades\Http::timeout(10)->get('https://api.binderbyte.com/v1/track', [
+                'api_key' => config('services.binderbyte.api_key'),
+                'courier' => $kurir,
+                'awb'     => $resi,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Tracking] Binderbyte tidak terjangkau: ' . $e->getMessage());
+            return $dasar + [
+                'tersedia' => false,
+                'pesan'    => 'Layanan pelacakan sedang tidak bisa dihubungi. Coba lagi nanti atau cek di website ekspedisi.',
+            ];
+        }
+
+        $json = $resp->json();
+
+        if (!$resp->ok() || (int) ($json['status'] ?? 0) !== 200) {
+            $apiMsg = (string) ($json['message'] ?? '');
+            \Illuminate\Support\Facades\Log::error('[Tracking] Binderbyte gagal ' . $kurir . '/' . $resi . ': HTTP ' . $resp->status() . ' ' . $apiMsg);
+
+            $tidakKetemu = (bool) preg_match('/not found|tidak ditemukan|invalid/i', $apiMsg);
+            return $dasar + [
+                'tersedia' => false,
+                'pesan'    => $tidakKetemu
+                    ? 'Resi belum ditemukan di sistem ekspedisi. Pastikan nomor resi dan ekspedisinya sesuai, atau coba lagi nanti.'
+                    : 'Data pelacakan sedang tidak tersedia. Silakan cek langsung di website ekspedisi.',
+            ];
+        }
+
+        $data = $json['data'] ?? [];
+
+        $history = collect($data['history'] ?? [])->map(function ($h) {
+            $raw   = (string) ($h['date'] ?? '');
+            $waktu = $raw;
+            try {
+                if ($raw !== '') {
+                    $waktu = \Illuminate\Support\Carbon::parse($raw)->format('d M Y, H:i') . ' WIB';
+                }
+            } catch (\Throwable $e) {
+            }
+            return [
+                'status' => (string) ($h['desc'] ?? '-'),
+                'lokasi' => trim((string) ($h['location'] ?? '')),
+                'waktu'  => $waktu,
+                'tipe'   => 'done',
+                'ts'     => strtotime($raw) ?: 0,
+            ];
+        })->sortByDesc('ts')->values()->map(function ($h) {
+            unset($h['ts']);
+            return $h;
+        })->all();
+
+        if (empty($history)) {
+            return $dasar + [
+                'tersedia' => false,
+                'pesan'    => 'Belum ada riwayat perjalanan dari ekspedisi. Paket mungkin baru diserahkan, coba lagi nanti.',
+            ];
+        }
+
+        $history[0]['tipe'] = 'current';
+
+        $statusKurir = strtoupper((string) ($data['summary']['status'] ?? ''));
+        $asal   = trim((string) ($data['detail']['origin'] ?? ''));
+        $tujuan = trim((string) ($data['detail']['destination'] ?? ''));
+
+        $alamat = '';
+        if ($asal !== '' || $tujuan !== '') {
+            $alamat = trim('Asal: ' . ($asal ?: '-') . ' -> Tujuan: ' . ($tujuan ?: '-'));
+        }
+
+        $hasil = [
+            'tersedia'        => true,
+            'status_kurir'    => $statusKurir,
+            'estimasi_tiba'   => $statusKurir === 'DELIVERED'
+                ? 'Paket sudah diterima'
+                : 'Hubungi ekspedisi untuk estimasi tiba',
+            'posisi_sekarang' => [
+                'nama'   => $history[0]['lokasi'] !== '' ? $history[0]['lokasi'] : $history[0]['status'],
+                'alamat' => $alamat !== '' ? $alamat : $history[0]['status'],
+            ],
+            'riwayat'         => $history,
+            'kurir'           => $this->kurirDariRiwayat($history),
+        ];
+
+        \Illuminate\Support\Facades\Cache::put(
+            $cacheKey,
+            $hasil,
+            now()->addMinutes($statusKurir === 'DELIVERED' ? 360 : 30)
+        );
+
+        return $dasar + $hasil;
+    }
+
+    // Data contoh untuk melihat tampilan tanpa credit API (hanya mode demo local)
+    private function trackingContoh(Pesanan $p): array
+    {
+        $kota = strtoupper(trim((string) $p->kota_tujuan) ?: 'KOTA TUJUAN');
+        $t    = fn ($menit) => now()->subMinutes($menit)->format('d M Y, H:i') . ' WIB';
+
+        $history = [
+            ['status' => 'Paket Anda telah terkirim. Penerima: Customer', 'lokasi' => $kota, 'waktu' => $t(15), 'tipe' => 'current'],
+            ['status' => 'Paket sedang dikirim ke alamat penerima oleh kurir Budi Santoso (081234567890)', 'lokasi' => $kota, 'waktu' => $t(300), 'tipe' => 'done'],
+            ['status' => 'Paket tiba di hub tujuan', 'lokasi' => 'HUB ' . $kota, 'waktu' => $t(700), 'tipe' => 'done'],
+            ['status' => 'Paket dalam perjalanan antar hub', 'lokasi' => 'HUB JAKARTA PUSAT', 'waktu' => $t(1100), 'tipe' => 'done'],
+            ['status' => 'Paket diterima ekspedisi dari penjual', 'lokasi' => 'JAKARTA PUSAT', 'waktu' => $t(1500), 'tipe' => 'done'],
+        ];
+
+        return [
+            'tersedia'        => true,
+            'demo'            => true,
+            'status_kurir'    => 'DELIVERED',
+            'estimasi_tiba'   => 'Paket sudah diterima',
+            'posisi_sekarang' => ['nama' => $history[0]['lokasi'], 'alamat' => $history[0]['status']],
+            'riwayat'         => $history,
+            'kurir'           => $this->kurirDariRiwayat($history),
+        ];
+    }
+
+    // Nama & nomor kurir hanya diambil kalau tertulis di teks status dari ekspedisi
+    private function kurirDariRiwayat(array $history): ?array
+    {
+        foreach ($history as $h) {
+            $teks = (string) ($h['status'] ?? '');
+
+            if (!preg_match('/(?:\+62|62|0)8\d{8,12}/', $teks, $tm)) {
+                continue;
+            }
+
+            $digit = preg_replace('/\D/', '', $tm[0]);
+            $telp  = str_starts_with($digit, '0') ? '+62' . substr($digit, 1) : '+' . $digit;
+
+            $nama = null;
+            if (preg_match('/kurir\s*[:\-]?\s*([A-Za-z][A-Za-z .]{2,40}?)\s*(?:\(|\[|\||,|\d|$)/i', $teks, $nm)) {
+                $nama = trim($nm[1]);
+            }
+
+            return ['nama' => $nama ?: 'Kurir', 'telp' => $telp];
+        }
+
+        return null;
+    }
+
+    // Titik asal (toko) & tujuan (alamat penerima) untuk peta
+    private function petaPengiriman(Pesanan $p): ?array
+    {
+        $alamat = trim((string) $p->alamat);
+        $kota   = trim((string) $p->kota_tujuan);
+
+        $kandidatTujuan = [$alamat];
+        if ($alamat !== '') {
+            $bagian = array_values(array_filter(array_map('trim', explode(',', $alamat))));
+            if (count($bagian) >= 2) {
+                $kandidatTujuan[] = implode(', ', array_slice($bagian, -3));
+            }
+        }
+        $kandidatTujuan[] = $kota;
+
+        $tujuan = null;
+        foreach ($kandidatTujuan as $q) {
+            if (trim((string) $q) === '') {
+                continue;
+            }
+            $tujuan = $this->geocode($q);
+            if ($tujuan) {
+                break;
+            }
+        }
+
+        $asal = null;
+        foreach (['Jl. Kramat Raya No.98, Senen, Jakarta Pusat', 'Kramat, Senen, Jakarta Pusat'] as $q) {
+            $asal = $this->geocode($q);
+            if ($asal) {
+                break;
+            }
+        }
+
+        if (!$tujuan && !$asal) {
+            return null;
+        }
+
+        return ['asal' => $asal, 'tujuan' => $tujuan];
+    }
+
+    // Geocoding Nominatim (OpenStreetMap). Hasil di-cache supaya tidak membebani layanan gratis ini.
+    private function geocode(string $q): ?array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return null;
+        }
+
+        $key = 'geo_' . md5(mb_strtolower($q));
+        $hit = \Illuminate\Support\Facades\Cache::get($key);
+        if ($hit === 'miss') {
+            return null;
+        }
+        if (is_array($hit)) {
+            return $hit;
+        }
+
+        usleep(1100000); // Nominatim: maksimal 1 permintaan per detik
+
+        try {
+            $r = \Illuminate\Support\Facades\Http::timeout(8)
+                ->withHeaders(['User-Agent' => 'TokoOnlineBSI/1.0 (proyek kuliah)'])
+                ->get('https://nominatim.openstreetmap.org/search', [
+                    'q'            => $q . ', Indonesia',
+                    'format'       => 'jsonv2',
+                    'limit'        => 1,
+                    'countrycodes' => 'id',
+                ]);
+            $j = $r->json();
+
+            if ($r->ok() && !empty($j[0]['lat']) && !empty($j[0]['lon'])) {
+                $res = ['lat' => (float) $j[0]['lat'], 'lng' => (float) $j[0]['lon']];
+                \Illuminate\Support\Facades\Cache::put($key, $res, now()->addDays(30));
+                return $res;
+            }
+
+            if ($r->ok()) {
+                \Illuminate\Support\Facades\Cache::put($key, 'miss', now()->addDay());
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[Geocode] ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    // Samakan nama ekspedisi di DB dengan kode kurir Binderbyte
+    private function kodeKurirBinderbyte(?string $e): string
+    {
+        $e = preg_replace('/[^a-z0-9]/', '', strtolower(trim((string) $e)));
+        $map = [
+            'jne' => 'jne', 'jnexpress' => 'jne',
+            'jnt' => 'jnt', 'jt' => 'jnt', 'jet' => 'jnt', 'jtexpress' => 'jnt',
+            'sicepat' => 'sicepat',
+            'anteraja' => 'anteraja',
+            'pos' => 'pos', 'posindonesia' => 'pos',
+            'tiki' => 'tiki',
+            'ninja' => 'ninja', 'ninjaxpress' => 'ninja',
+            'sap' => 'sap',
+        ];
+        return $map[$e] ?? $e;
+    }
+
+    public function uploadFotoBukti(\Illuminate\Http\Request $request, $id)
+    {
+        $request->validate([
+            'foto'       => 'required|image|mimes:jpg,jpeg,png,webp|max:3072',
+            'keterangan' => 'nullable|string|max:255',
+        ]);
+
+        $path = $request->file('foto')->store('bukti-pesanan', 'public');
+
+        \App\Models\PesananFotoBukti::create([
+            'pesanan_id' => $id,
+            'foto'       => $path,
+            'keterangan' => $request->keterangan,
+        ]);
+
+        return back()->with('success', 'Foto bukti berhasil diunggah.');
+    }
+
+    public function hapusFotoBukti($id)
+    {
+        $foto = \App\Models\PesananFotoBukti::findOrFail($id);
+        \Illuminate\Support\Facades\Storage::disk('public')->delete($foto->foto);
+        $foto->delete();
+
+        return back()->with('success', 'Foto bukti dihapus.');
+    }}

@@ -1,0 +1,1278 @@
+##### ROUTES (lacak/track/resi) #####
+web.php:224: Route::get('pesanan/{id}/tracking', [PesananController::class, 'tracking'])
+web.php:225: ->name('pesanan.tracking');
+
+##### app\Http\Controllers\Admin\PesananController.php #####
+   ...
+  39:     public function update(Request $request, $id)
+  40:     {
+  41:         $request->validate([
+  42:             'status_pesanan'    => 'required',
+  43:             'ekspedisi'         => 'nullable|string|max:100',
+  44:             'layanan_ekspedisi' => 'nullable|string|max:100',
+  45:             'no_resi'           => 'nullable|string|max:100',
+  46:             'alamat'            => 'nullable|string',
+  47:             'kode_pos'          => 'nullable|string|max:20',
+  48:         ]);
+  49: 
+  50:         $pesanan         = Pesanan::findOrFail($id);
+  51:         $pesanan->status = $request->status_pesanan;
+  52: 
+  53:         // Simpan data ekspedisi hanya jika status = dikirim
+  54:         if (strtolower($request->status_pesanan) === 'dikirim') {
+  55:             if ($request->filled('ekspedisi')) {
+  56:                 $pesanan->ekspedisi = $request->ekspedisi;
+  57:             }
+  58:             if ($request->filled('layanan_ekspedisi')) {
+  59:                 $pesanan->layanan_ekspedisi = $request->layanan_ekspedisi;
+  60:             }
+  61:             $pesanan->no_resi = $request->no_resi;
+  62:         }
+  63: 
+  64:         // Alamat & kode pos bisa dikoreksi dari halaman detail
+  65:         if ($request->filled('alamat')) {
+  66:             $pesanan->alamat = $request->alamat;
+  67:         }
+  68:         if ($request->filled('kode_pos')) {
+  69:             $pesanan->kode_pos = $request->kode_pos;
+  70:         }
+  71: 
+  72:         $pesanan->save();
+  73: 
+  74:         // Kirim email notifikasi setelah response dikirim ke browser (non-blocking)
+  75:         if ($pesanan->user && $pesanan->user->email) {
+  76:             $email = $pesanan->user->email;
+  77:             $mail  = new StatusPesananMail($pesanan);
+  78: 
+  79:             try {
+  80:                 Mail::to($email)->send($mail);
+  81:             } catch (\Exception $e) {
+  82:                 Log::error('[Pesanan] Gagal kirim email: ' . $e->getMessage());
+  83:             }
+  84:         }
+  85: 
+  86:         // Dipanggil lewat AJAX (modal index lama) â†’ balikin JSON
+   ...
+  94:         // Dipanggil lewat form biasa (halaman detail) â†’ redirect kembali
+  95:         return redirect()
+  96:             ->route('admin.pesanan.detail', $pesanan->id)
+  97:             ->with('success', 'Status pesanan berhasil diperbarui dan email notifikasi telah dikirim!');
+  98:     }
+  99: 
+ 100:     public function tracking($id)
+ 101:     {
+ 102:         $pesanan = Pesanan::where('id', $id)
+ 103:             ->where('user_id', auth()->id())
+ 104:             ->firstOrFail();
+ 105: 
+ 106:         // Gunakan API Binderbyte jika no_resi & ekspedisi tersedia
+ 107:         if ($pesanan->no_resi && $pesanan->ekspedisi) {
+ 108:             $apiKey = config('services.binderbyte.api_key');
+ 109: 
+ 110:             $resp = Http::get('https://api.binderbyte.com/v1/track', [
+ 111:                 'api_key' => $apiKey,
+ 112:                 'courier' => $pesanan->ekspedisi,
+ 113:                 'awb'     => $pesanan->no_resi,
+ 114:             ]);
+ 115: 
+ 116:             if ($resp->ok()) {
+ 117:                 $bind    = $resp->json();
+ 118:                 $history = collect($bind['data']['history'] ?? [])->map(fn($h) => [
+ 119:                     'status' => $h['desc']     ?? '-',
+ 120:                     'lokasi' => $h['location'] ?? '-',
+ 121:                     'waktu'  => $h['date']     ?? '',
+ 122:                     'tipe'   => 'done',
+ 123:                 ])->toArray();
+ 124: 
+ 125:                 if (!empty($history)) {
+ 126:                     $history[0]['tipe'] = 'current';
+ 127:                 }
+ 128: 
+ 129:                 return response()->json([
+ 130:                     'ekspedisi'       => $pesanan->ekspedisi,
+ 131:                     'layanan'         => $pesanan->layanan_ekspedisi,
+ 132:                     'no_resi'         => $pesanan->no_resi,
+ 133:                     'estimasi_tiba'   => $bind['data']['summary']['estimasi'] ?? '-',
+ 134:                     'posisi_sekarang' => [
+ 135:                         'nama'   => $history[0]['lokasi'] ?? '-',
+ 136:                         'alamat' => '',
+ 137:                     ],
+ 138:                     'riwayat' => $history,
+ 139:                 ]);
+ 140:             }
+ 141:         }
+ 142: 
+ 143:         // Fallback: kembalikan data dasar dari database
+ 144:         return response()->json([
+ 145:             'ekspedisi'       => $pesanan->ekspedisi,
+ 146:             'layanan'         => $pesanan->layanan_ekspedisi,
+ 147:             'no_resi'         => $pesanan->no_resi,
+ 148:             'estimasi_tiba'   => 'Hubungi ekspedisi untuk estimasi tiba',
+ 149:             'posisi_sekarang' => [
+ 150:                 'nama'   => 'Paket sedang dalam pengiriman',
+ 151:                 'alamat' => 'Lacak posisi detail di website ekspedisi',
+ 152:             ],
+ 153:             'riwayat' => [
+ 154:                 [
+ 155:                     'status' => 'Pesanan dikemas oleh penjual',
+ 156:                     'lokasi' => 'Gudang Penjual',
+ 157:                     'waktu'  => $pesanan->created_at
+ 158:                                     ? $pesanan->created_at->format('d M Y, H:i') . ' WIB'
+ 159:                                     : '',
+ 160:                     'tipe'   => 'done',
+ 161:                 ],
+ 162:                 [
+ 163:                     'status' => 'Paket diterima ' . strtoupper($pesanan->ekspedisi ?? 'ekspedisi'),
+ 164:                     'lokasi' => '-',
+ 165:                     'waktu'  => '',
+ 166:                     'tipe'   => 'done',
+ 167:                 ],
+ 168:                 [
+ 169:                     'status' => 'Paket dalam perjalanan pengiriman',
+ 170:                     'lokasi' => '-',
+ 171:                     'waktu'  => $pesanan->updated_at
+ 172:                                     ? $pesanan->updated_at->format('d M Y, H:i') . ' WIB'
+ 173:                                     : '',
+ 174:                     'tipe'   => 'current',
+ 175:                 ],
+ 176:                 [
+
+##### app\Http\Controllers\OngkirController.php #####
+   ...
+  91:                 'service'   => $layanan['nama'],
+  92:                 'price'     => (int) $harga,
+  93:                 'estimated' => $layanan['estimasi'],
+  94:             ];
+  95:         }
+  96: 
+  97:         // Struktur respons dibuat mirip format lama (Binderbyte-style) supaya
+  98:         // JS di ongkir.blade.php / pengiriman.blade.php tidak perlu diubah lagi.
+  99:         return response()->json([
+ 100:             'status' => 200,
+ 101:             'data'   => [
+ 102:                 'costs' => $costs,
+ 103:             ],
+ 104:         ]);
+ 105:     }
+ 106: }
+
+##### app\Http\Controllers\NotifikasiController.php #####
+   ...
+  21: 
+  22:             foreach ($pesanan as $p) {
+  23:                 $statusLower = strtolower($p->status ?? '');
+  24: 
+  25:                 if ($statusLower === 'menunggu pembayaran') {
+  26:                     $link = route('customer.checkout.pembayaran', $p->id);
+  27:                 } elseif ($statusLower === 'dikirim' && $p->no_resi) {
+  28:                     $link = route('customer.riwayat.index', ['lacak' => $p->id]);
+  29:                 } else {
+  30:                     $link = route('customer.riwayat.index', ['highlight' => $p->id]);
+  31:                 }
+  32: 
+  33:                 $orders[] = [
+  34:                     'id'            => $p->id,
+  35:                     'kode_pesanan'  => $p->kode_pesanan ?? '-',
+  36:                     'customer_name' => 'Pesanan Anda',
+  37:                     'total_format'  => 'Rp ' . number_format($p->total_harga, 0, ',', '.'),
+  38:                     'status'        => $p->status,
+  39:                     'waktu'         => $p->created_at->diffForHumans(),
+  40:                     'link'          => $link,
+  41:                 ];
+  42:             }
+  43:         } else {
+  44:             // Admin: lihat semua pesanan 7 hari terakhir (tanpa filter status)
+  45:             $pesanan = Pesanan::with('user')
+  46:                 ->where('created_at', '>=', now()->subDays(7))
+  47:                 ->latest()->take(5)->get();
+  48: 
+  49:             foreach ($pesanan as $p) {
+  50:                 $orders[] = [
+  51:                     'id'            => $p->id,
+  52:                     'kode_pesanan'  => $p->kode_pesanan ?? '-',
+  53:                     'customer_name' => $p->user->nama ?? 'Unknown',
+
+##### app\Models\Pesanan.php #####
+   ...
+  35:         'metode_pembayaran',
+  36:         'batas_pembayaran',
+  37:         'status',
+  38:         'is_read',
+  39:         'ekspedisi',
+  40:         'layanan_ekspedisi',
+  41:         'no_resi',
+  42:         'snap_token',
+  43:     ];
+  44: 
+  45:     protected $casts = [
+  46:         'batas_pembayaran' => 'datetime',
+  47:         'is_read'          => 'boolean',
+  48:     ];
+  49: 
+  50:     public function user()
+  51:     {
+  52:         return $this->belongsTo(User::class, 'user_id');
+  53:     }
+  54: 
+  55:     public function detailPesanan()
+  56:     {
+  57:         return $this->hasMany(PesananDetail::class, 'pesanan_id');
+  58:     }
+  59: 
+  60:     public function details()
+  61:     {
+  62:         return $this->hasMany(PesananDetail::class, 'pesanan_id');
+  63:     }
+  64: 
+  65:     public function getTotalFormatAttribute(): string
+  66:     {
+
+##### config\binderbyte.php #####
+   ...
+   1: <?php
+   2: 
+   3: return [
+   4:     'api_key' => env('BINDERBYTE_API_KEY'),
+   5: ];
+
+##### config\services.php #####
+   ...
+  28:     'ses' => [
+  29:         'key'    => env('AWS_ACCESS_KEY_ID'),
+  30:         'secret' => env('AWS_SECRET_ACCESS_KEY'),
+  31:         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+  32:     ],
+  33: 
+  34:     'binderbyte' => [
+  35:         'api_key' => env('BINDERBYTE_API_KEY'),
+  36:     ],
+  37: 
+  38:     'google' => [
+  39:         'client_id' => env('GOOGLE_CLIENT_ID'),
+  40:         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+  41:         'redirect' => env('GOOGLE_REDIRECT_URL'),
+  42:     ],
+  43: ];
+
+##### config\service.php #####
+   ...
+   1: <?php
+   2: 
+   3: return [
+   4: 
+   5:     'binderbyte' => [
+   6:         'key' => env('BINDERBYTE_API_KEY'),
+   7:     ],
+   8: 
+   9: ];
+
+##### resources\views\customer\riwayat\index.blade.php (bagian lacak) #####
+ 135: 
+ 136: .btn-invoice {
+ 137:     background: #495057;
+ 138: }
+ 139: 
+ 140: .btn-invoice:hover {
+ 141:     background: #343a40;
+ 142:     color: #fff;
+ 143: }
+ 144: 
+ 145: .btn-lacak-sm {
+ 146:     background: #28a745;
+ 147: }
+ 148: 
+ 149: .btn-lacak-sm:hover {
+ 150:     background: #1e7e34;
+ 151:     color: #fff;
+ 152: }
+ 153: 
+ 154: .btn-bayar-sm {
+ 155:     background: #f59e0b;
+ 156: }
+ 157: 
+ 158: .btn-bayar-sm:hover {
+ 159:     background: #d18306;
+ 160:     color: #fff;
+ 161: }
+ 162: 
+ 163: /* â”€â”€ ROW DETAIL (expand) â”€â”€ */
+ 164: .row-detail td {
+ 165:     background: #fafbfc;
+ 166:     padding: 0 !important;
+ 167: }
+ 168: 
+ 169: .detail-inner {
+ 170:     padding: 14px 20px;
+ 171: }
+ 172: 
+ 173: .mini-detail-table {
+ 174:     width: 100%;
+ 175:     border-collapse: collapse;
+ 176:     font-size: 12px;
+ 177: }
+ 178: 
+ 179: .mini-detail-table thead th {
+ 180:     padding: 6px 10px;
+ 181:     background: #f0f4ff;
+ 182:     color: #444;
+ 183:     font-weight: 600;
+ 184:     text-align: left;
+ 185:     border-bottom: 1px solid #dde3f0;
+ 186: }
+ 187: 
+ 188: .mini-detail-table tbody td {
+ 189:     padding: 6px 10px;
+ 190:     border-bottom: 1px solid #f0f0f0;
+ 191:     color: #555;
+ 192: }
+ 193: 
+ 194: .mini-detail-table tbody tr:last-child td {
+ 195:     border-bottom: none;
+ 196: }
+ 197: 
+ 198: /* â”€â”€ STATUS BADGE â”€â”€ */
+ 199: .status-badge {
+ 200:     display: inline-block;
+ 201:     padding: 3px 10px;
+ 202:     border-radius: 20px;
+ 203:     font-size: 11px;
+ 204:     font-weight: 600;
+ 205:     text-transform: capitalize;
+ 206: }
+ 207: 
+ 208: .status-pending,
+ 209: .status-menunggu-pembayaran {
+ 210:     background: #fff3cd;
+ 211:     color: #856404;
+ 212: }
+ 213: 
+ 214: .status-proses {
+ 215:     background: #cce5ff;
+ 216:     color: #004085;
+ 217: }
+ 218: 
+ 219: .status-dikirim {
+ 220:     background: #d4edda;
+ 221:     color: #155724;
+ 222: }
+ 223: 
+ 224: .status-selesai {
+ 225:     background: #d1ecf1;
+ 226:     color: #0c5460;
+ 227: }
+ 228: 
+ 229: .status-dibatalkan {
+ 230:     background: #f8d7da;
+ 231:     color: #721c24;
+ 232: }
+ 233: 
+ 234: .status-default {
+ 235:     background: #e2e3e5;
+ 236:     color: #383d41;
+ 237: }
+ 238: 
+ 239: /* â”€â”€ KOSONG â”€â”€ */
+ 240: .empty-state {
+ 241:     text-align: center;
+ 242:     padding: 60px 20px;
+ 243:     color: #aaa;
+ 244: }
+ 245: 
+ 246: .empty-state i {
+ 247:     font-size: 56px;
+ 248:     margin-bottom: 16px;
+ 249:     display: block;
+ 250:     color: #ddd;
+ 251: }
+ 252: 
+ 253: .empty-state p {
+ 254:     font-size: 15px;
+ 255:     margin-bottom: 16px;
+ 256: }
+ 257: 
+ 258: /* â”€â”€ MODAL TRACKING (tetap dipakai, tidak diubah) â”€â”€ */
+ 259: .modal-tracking .modal-dialog {
+ 260:     max-width: 560px;
+ 261: }
+ 262: 
+ 263: .modal-tracking .modal-header {
+ 264:     background: #1976d2;
+ 265:     color: #fff;
+ 266:     border-radius: 12px 12px 0 0;
+ 267:     padding: 14px 20px;
+ 268: }
+ 269: 
+ 270: .modal-tracking .modal-header .modal-title {
+ 271:     font-weight: 700;
+ 272:     font-size: 15px;
+ 273:     display: flex;
+ 274:     align-items: center;
+ 275:     gap: 8px;
+ 276: }
+ 277: 
+ 278: .modal-tracking .modal-header .close {
+ 279:     color: #fff;
+ 280:     opacity: 0.8;
+ 281:     font-size: 22px;
+ 282: }
+ 283: 
+ 284: .modal-tracking .modal-header .close:hover {
+ 285:     opacity: 1;
+ 286: }
+ 287: 
+ 288: .ekspedisi-info-box {
+ 289:     background: #f0f7ff;
+ 290:     border: 1px solid #c3d9f7;
+ 291:     border-radius: 10px;
+ 292:     padding: 14px 16px;
+ 293:     margin-bottom: 18px;
+ 294:     display: flex;
+ 295:     align-items: flex-start;
+ 296:     gap: 14px;
+ 297: }
+ 298: 
+ 299: .ekspedisi-logo-box {
+ 300:     width: 52px;
+ 301:     height: 52px;
+ 302:     border-radius: 8px;
+ 303:     background: #fff;
+ 304:     border: 1px solid #dde8f8;
+ 305:     display: flex;
+ 306:     align-items: center;
+ 307:     justify-content: center;
+ 308:     font-size: 11px;
+ 309:     font-weight: 700;
+ 310:     color: #1976d2;
+ 311:     text-align: center;
+ 312:     line-height: 1.3;
+ 313:     flex-shrink: 0;
+ 314: }
+ 315: 
+ 316: .ekspedisi-detail {
+ 317:     flex: 1;
+ 318: }
+ 319: 
+ 320: .ekspedisi-nama {
+ 321:     font-size: 15px;
+ 322:     font-weight: 700;
+ 323:     color: #1e2a3a;
+ 324:     margin-bottom: 2px;
+ 325: }
+ 326: 
+ 327: .ekspedisi-layanan {
+ 328:     font-size: 12px;
+ 329:     color: #666;
+ 330:     margin-bottom: 8px;
+ 331: }
+ 332: 
+ 333: .resi-row {
+ 334:     background: #fff;
+ 335:     border: 1px solid #dde8f8;
+ 336:     border-radius: 6px;
+ 337:     padding: 7px 12px;
+ 338:     display: flex;
+ 339:     align-items: center;
+ 340:     justify-content: space-between;
+ 341:     gap: 8px;
+ 342: }
+ 343: 
+ 344: .resi-label-sm {
+ 345:     font-size: 11px;
+ 346:     color: #888;
+ 347: }
+ 348: 
+ 349: .resi-value {
+ 350:     font-family: monospace;
+ 351:     font-size: 14px;
+ 352:     font-weight: 700;
+ 353:     color: #1e2a3a;
+ 354:     letter-spacing: 1px;
+ 355: }
+ 356: 
+ 357: .resi-copy-btn {
+ 358:     background: none;
+ 359:     border: none;
+ 360:     color: #1976d2;
+ 361:     font-size: 12px;
+ 362:     cursor: pointer;
+ 363:     padding: 0;
+ 364:     display: flex;
+ 365:     align-items: center;
+ 366:     gap: 3px;
+ 367:     white-space: nowrap;
+ 368: }
+ 369: 
+ 370: .resi-copy-btn:hover {
+ 371:     text-decoration: underline;
+ 372: }
+ 373: 
+ 374: .lokasi-box {
+ 375:     background: #f0fff4;
+ 376:     border: 1px solid #b7e4c7;
+ 377:     border-left: 4px solid #28a745;
+ 378:     border-radius: 8px;
+ 379:     padding: 12px 14px;
+ 380:     margin-bottom: 18px;
+ 381: }
+ 382: 
+ 383: .lokasi-box .lokasi-title {
+ 384:     font-size: 11px;
+ 385:     color: #28a745;
+ 386:     font-weight: 600;
+ 387:     margin-bottom: 4px;
+ 388:     display: flex;
+ 389:     align-items: center;
+ 390:     gap: 5px;
+ 391: }
+ 392: 
+ 393: .lokasi-box .lokasi-nama {
+ 394:     font-size: 14px;
+ 395:     font-weight: 700;
+ 396:     color: #1e2a3a;
+ 397:     margin-bottom: 2px;
+ 398: }
+ 399: 
+ 400: .lokasi-box .lokasi-alamat {
+ 401:     font-size: 12px;
+ 402:     color: #555;
+ 403:     margin-bottom: 8px;
+ 404: }
+ 405: 
+ 406: .lokasi-box .eta-row {
+ 407:     display: flex;
+ 408:     align-items: center;
+ 409:     justify-content: space-between;
+ 410:     padding-top: 8px;
+ 411:     border-top: 1px solid #c3e6cb;
+ 412: }
+ 413: 
+ 414: .eta-label-sm {
+ 415:     font-size: 12px;
+ 416:     color: #666;
+ 417: }
+ 418: 
+ 419: .eta-value {
+ 420:     font-size: 13px;
+ 421:     font-weight: 700;
+ 422:     color: #155724;
+ 423: }
+ 424: 
+ 425: .tracking-section-title {
+ 426:     font-size: 11px;
+ 427:     font-weight: 700;
+ 428:     color: #888;
+ 429:     letter-spacing: 0.07em;
+ 430:     text-transform: uppercase;
+ 431:     margin-bottom: 12px;
+ 432: }
+ 433: 
+ 434: .timeline-list {
+ 435:     list-style: none;
+ 436:     padding: 0;
+ 437:     margin: 0;
+ 438: }
+ 439: 
+ 440: .timeline-list li {
+ 441:     display: flex;
+ 442:     gap: 14px;
+ 443:     padding-bottom: 18px;
+ 444:     position: relative;
+ 445: }
+ 446: 
+ 447: .timeline-list li:last-child {
+ 448:     padding-bottom: 0;
+ 449: }
+ 450: 
+ 451: .timeline-list li:not(:last-child) .tl-icon-wrap::after {
+ 452:     content: '';
+ 453:     position: absolute;
+ 454:     left: 15px;
+ 455:     top: 32px;
+ 456:     width: 1px;
+ 457:     height: calc(100% - 14px);
+ 458:     background: #d0dce8;
+ 459: }
+ 460: 
+ 461: .tl-icon-wrap {
+ 462:     position: relative;
+ 463:     flex-shrink: 0;
+ 464: }
+ 465: 
+ 466: .tl-icon {
+ 467:     width: 30px;
+ 468:     height: 30px;
+ 469:     border-radius: 50%;
+ 470:     display: flex;
+ 471:     align-items: center;
+ 472:     justify-content: center;
+ 473:     font-size: 13px;
+ 474: }
+ 475: 
+ 476: .tl-icon.current {
+ 477:     background: #1976d2;
+ 478:     color: #fff;
+ 479: }
+ 480: 
+ 481: .tl-icon.done {
+ 482:     background: #e8f5e9;
+ 483:     color: #28a745;
+ 484:     border: 1px solid #b7e4c7;
+ 485: }
+ 486: 
+ 487: .tl-icon.pending {
+ 488:     background: #f5f5f5;
+ 489:     color: #bbb;
+ 490:     border: 1px solid #e0e0e0;
+ 491: }
+ 492: 
+ 493: .tl-content {
+ 494:     flex: 1;
+ 495:     padding-top: 4px;
+ 496: }
+ 497: 
+ 498: .tl-event {
+ 499:     font-size: 13px;
+ 500:     font-weight: 600;
+ 501:     color: #1e2a3a;
+ 502:     margin-bottom: 2px;
+ 503: }
+ 504: 
+ 505: .tl-event.pending {
+ 506:     color: #bbb;
+ 507: }
+ 508: 
+ 509: .tl-lokasi {
+ 510:     font-size: 12px;
+ 511:     color: #666;
+ 512:     margin-bottom: 1px;
+ 513: }
+ 514: 
+ 515: .tl-waktu {
+ 516:     font-size: 11px;
+ 517:     color: #aaa;
+ 518: }
+ 519: 
+ 520: .pulse-dot {
+ 521:     display: inline-block;
+ 522:     width: 8px;
+ 523:     height: 8px;
+ 524:     border-radius: 50%;
+ 525:     background: #28a745;
+ 526:     animation: pulse 1.5s infinite;
+ 527:     vertical-align: middle;
+ 528:     margin-right: 4px;
+ 529: }
+ 530: 
+ 531: @keyframes pulse {
+ 532: 
+ 533:     0%,
+ 534:     100% {
+ 535:         opacity: 1;
+ 536:         transform: scale(1);
+ 537:     }
+ 538: 
+ 539:     50% {
+ 540:         opacity: 0.5;
+ 541:         transform: scale(0.8);
+ 542:     }
+ 543: }
+ 544: 
+ 545: .tracking-loading {
+ 546:     text-align: center;
+ 547:     padding: 40px 20px;
+ 548:     color: #999;
+ 549: }
+ 550: 
+ 551: .tracking-loading .spinner-border {
+ 552:     width: 2rem;
+ 553:     height: 2rem;
+ 554:     color: #1976d2;
+ 555:     margin-bottom: 12px;
+ 556: }
+ 557: 
+ 558: .tracking-error {
+ 559:     text-align: center;
+ 560:     padding: 30px 20px;
+ 561:     color: #721c24;
+ 562: }
+ 563: </style>
+ 564: 
+ 565: <div class="riwayat-wrapper">
+ 566: 
+ 567:     <div class="riwayat-header">
+ 568:         <div class="icon-wrap"><i class="fas fa-shopping-bag"></i></div>
+ 569:         <h4>Pusat Riwayat Belanja</h4>
+ 570:     </div>
+ 571: 
+ 572:     @if($pesanan->isEmpty())
+ 573:     <div class="history-table-wrap">
+ 574:         <div class="empty-state">
+ 575:             <i class="fas fa-box-open"></i>
+ 576:             <p>Belum ada riwayat belanja.</p>
+ 577:             <a href="{{ route('customer.produk.index') }}" class="btn btn-primary btn-sm">
+ 578:                 <i class="fas fa-store mr-1"></i> Mulai Belanja
+ 579:             </a>
+ 580:         </div>
+ 581:     </div>
+ 582: 
+ 583:     @else
+ 584:     <div class="history-table-wrap">
+ 585:         <div class="history-table-scroll">
+ 586:             <table class="history-table">
+ 587:                 <thead>
+ 588:                     <tr>
+ 589:                         <th>ID Pesanan</th>
+ 590:                         <th>Tanggal</th>
+ 591:                         <th>Total Bayar</th>
+ 592:                         <th>Status</th>
+ 593:                         <th>Detail</th>
+ 594:                     </tr>
+ 595:                 </thead>
+ 596:                 <tbody>
+ 597:                     @foreach($pesanan as $p)
+ 598:                     @php
+ 599:                     $status = strtolower($p->status ?? 'default');
+ 600:                     $statusSlug = str_replace(' ', '-', $status);
+ 601:                     $statusClass = in_array($statusSlug,
+ 602:                     ['pending','proses','dikirim','selesai','dibatalkan','menunggu-pembayaran'])
+ 603:                     ? 'status-' . $statusSlug
+ 604:                     : 'status-default';
+ 605:                     $rowId = 'detail-row-' . $p->id;
+ 606:                     @endphp
+ 607:                     <tr data-pesanan-id="{{ $p->id }}">
+ 608:                         <td>
+ 609:                             <a href="javascript:void(0)" class="kode-pesanan-link"
+ 610:                                 onclick="toggleDetail('{{ $rowId }}')">
+ 611:                                 {{ $p->kode_pesanan ?? '#' . $p->id }}
+ 612:                             </a>
+ 613:                         </td>
+ 614:                         <td>{{ $p->created_at ? $p->created_at->format('d M Y, H:i') : '-' }}</td>
+ 615:                         <td class="total-bayar">{{ $p->total_format }}</td>
+ 616:                         <td>
+ 617:                             <span class="status-badge {{ $statusClass }}">
+ 618:                                 {{ ucfirst($p->status ?? 'Proses') }}
+ 619:                             </span>
+ 620:                         </td>
+ 621:                         <td>
+ 622:                             <div class="detail-actions">
+ 623:                                 <button type="button" class="btn-aksi btn-lihat-detail"
+ 624:                                     onclick="toggleDetail('{{ $rowId }}')">
+ 625:                                     <i class="fas fa-eye"></i> Lihat Detail
+ 626:                                 </button>
+ 627:                                 <button type="button" class="btn-aksi btn-invoice" data-invoice="{{ json_encode([
+ 628:                                         'kode'     => $p->kode_pesanan ?? ('#' . $p->id),
+ 629:                                         'tanggal'  => $p->created_at ? $p->created_at->toIso8601String() : '',
+ 630:                                         'pemesan'  => optional($p->user)->nama ?? '-',
+ 631:                                         'penerima' => $p->nama_penerima ?? (optional($p->user)->nama ?? '-'),
+ 632:                                         'alamat'   => $p->alamat ?? ($p->alamat_pengiriman ?? '-'),
+ 633:                                         'kode_pos' => $p->kode_pos ?? '',
+ 634:                                     ]) }}" onclick="cetakInvoice('{{ $rowId }}', this)">
+ 635:                                     <i class="fas fa-file-invoice"></i> Invoice
+ 636:                                 </button>
+ 637: 
+ 638:                                 @if($status === 'dikirim' && !empty($p->no_resi))
+ 639:                                 <button type="button" class="btn-aksi btn-lacak-sm"
+ 640:                                     onclick="bukaTracking({{ $p->id }}, '{{ $p->kode_pesanan ?? '#'.$p->id }}', '{{ $p->ekspedisi ?? '' }}', '{{ $p->layanan_ekspedisi ?? '' }}', '{{ $p->no_resi ?? '' }}')">
+ 641:                                     <i class="fas fa-map-marker-alt"></i> Lacak
+ 642:                                 </button>
+ 643:                                 @endif
+ 644: 
+ 645:                                 @if($status === 'menunggu pembayaran')
+ 646:                                 <a href="{{ route('customer.checkout.pembayaran', $p->id) }}"
+ 647:                                     class="btn-aksi btn-bayar-sm">
+ 648:                                     <i class="fas fa-credit-card"></i> Bayar
+ 649:                                 </a>
+ 650:                                 @endif
+ 651:                             </div>
+ 652:                         </td>
+ 653:                     </tr>
+ 654: 
+ 655:                     {{-- Row detail (tersembunyi, dibuka lewat tombol Lihat Detail) --}}
+ 656:                     <tr class="row-detail" id="{{ $rowId }}" style="display:none;">
+ 657:                         <td colspan="5">
+ 658:                             <div class="detail-inner">
+ 659:                                 @if($p->details && $p->details->count() > 0)
+ 660:                                 <table class="mini-detail-table">
+ 661:                                     <thead>
+ 662:                                         <tr>
+ 663:                                             <th>Produk</th>
+ 664:                                             <th class="text-center">Qty</th>
+ 665:                                             <th class="text-right">Harga</th>
+ 666:                                             <th class="text-right">Subtotal</th>
+ 667:                                         </tr>
+ 668:                                     </thead>
+ 669:                                     <tbody>
+ 670:                                         @foreach($p->details as $d)
+ 671:                                         <tr>
+ 672:                                             <td>{{ $d->nama_produk ?? ($d->produk->nama_produk ?? '-') }}</td>
+ 673:                                             <td class="text-center">{{ $d->jumlah }}</td>
+ 674:                                             <td class="text-right">Rp {{ number_format($d->harga, 0, ',', '.') }}</td>
+ 675:                                             <td class="text-right">Rp {{ number_format($d->subtotal, 0, ',', '.') }}
+ 676:                                             </td>
+ 677:                                         </tr>
+ 678:                                         @endforeach
+ 679:                                     </tbody>
+ 680:                                 </table>
+ 681:                                 @else
+ 682:                                 <p class="text-muted" style="font-size:12px; margin:0;">Detail produk tidak tersedia.
+ 683:                                 </p>
+ 684:                                 @endif
+ 685:                             </div>
+ 686:                         </td>
+ 687:                     </tr>
+ 688:                     @endforeach
+ 689:                 </tbody>
+ 690:             </table>
+ 691:         </div>
+ 692:     </div>
+ 693:     @endif
+ 694: 
+ 695: </div>
+ 696: 
+ 697: {{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
+ 698: {{-- MODAL TRACKING PENGIRIMAN (tidak diubah)       --}}
+ 699: {{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
+ 700: <div class="modal fade modal-tracking" id="modalTracking" tabindex="-1" role="dialog"
+ 701:     aria-labelledby="modalTrackingLabel" aria-hidden="true">
+ 702:     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
+ 703:         <div class="modal-content" style="border-radius:12px; overflow:hidden; border:none;">
+ 704: 
+ 705:             <div class="modal-header">
+ 706:                 <h5 class="modal-title" id="modalTrackingLabel">
+ 707:                     <i class="fas fa-shipping-fast"></i>
+ 708:                     <span id="mt-kode-pesanan">Lacak Pengiriman</span>
+ 709:                 </h5>
+ 710:                 <button type="button" class="close" data-dismiss="modal" aria-label="Tutup">
+ 711:                     <span aria-hidden="true">&times;</span>
+ 712:                 </button>
+ 713:             </div>
+ 714: 
+ 715:             <div class="modal-body" style="padding: 20px;">
+ 716: 
+ 717:                 <div class="tracking-loading" id="mt-loading">
+ 718:                     <div class="spinner-border" role="status"></div>
+ 719:                     <div style="font-size:14px;">Memuat data pengiriman...</div>
+ 720:                 </div>
+ 721: 
+ 722:                 <div class="tracking-error" id="mt-error" style="display:none;">
+ 723:                     <i class="fas fa-exclamation-circle fa-2x mb-2" style="color:#dc3545;"></i>
+ 724:                     <p style="font-size:13px; margin:0;" id="mt-error-msg">Gagal memuat data tracking.</p>
+ 725:                 </div>
+ 726: 
+ 727:                 <div id="mt-content" style="display:none;">
+ 728: 
+ 729:                     <div class="ekspedisi-info-box">
+ 730:                         <div class="ekspedisi-logo-box" id="mt-logo">JNE</div>
+ 731:                         <div class="ekspedisi-detail">
+ 732:                             <div class="ekspedisi-nama" id="mt-ekspedisi-nama">-</div>
+ 733:                             <div class="ekspedisi-layanan" id="mt-layanan">-</div>
+ 734:                             <div class="resi-row">
+ 735:                                 <div>
+ 736:                                     <div class="resi-label-sm">No. Resi Pengiriman</div>
+ 737:                                     <div class="resi-value" id="mt-resi">-</div>
+ 738:                                 </div>
+ 739:                                 <button class="resi-copy-btn" onclick="salinResi()">
+ 740:                                     <i class="far fa-copy"></i> Salin
+ 741:                                 </button>
+ 742:                             </div>
+ 743:                         </div>
+ 744:                     </div>
+ 745: 
+ 746:                     <div class="lokasi-box" id="mt-lokasi-box">
+ 747:                         <div class="lokasi-title">
+ 748:                             <span class="pulse-dot"></span> Posisi kurir sekarang
+ 749:                         </div>
+ 750:                         <div class="lokasi-nama" id="mt-lokasi-nama">-</div>
+ 751:                         <div class="lokasi-alamat" id="mt-lokasi-alamat"></div>
+ 752:                         <div class="eta-row">
+ 753:                             <span class="eta-label-sm"><i class="far fa-clock mr-1"></i>Estimasi tiba</span>
+ 754:                             <span class="eta-value" id="mt-eta">-</span>
+ 755:                         </div>
+ 756:                     </div>
+ 757: 
+ 758:                     <div class="tracking-section-title">Riwayat Perjalanan Paket</div>
+ 759:                     <ul class="timeline-list" id="mt-timeline">
+ 760:                         {{-- Diisi oleh JS --}}
+ 761:                     </ul>
+ 762: 
+ 763:                 </div>
+ 764: 
+ 765:             </div>
+ 766: 
+ 767:             <div class="modal-footer" style="padding:10px 20px; border-top:1px solid #e8eaf0;">
+ 768:                 <a id="mt-link-cek" href="#" target="_blank" class="btn btn-sm btn-outline-primary"
+ 769:                     style="font-size:12px;">
+ 770:                     <i class="fas fa-external-link-alt mr-1"></i> Cek di Website Ekspedisi
+ 771:                 </a>
+ 772:                 <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal"
+ 773:                     style="font-size:12px;">Tutup</button>
+ 774:             </div>
+ 775: 
+ 776:         </div>
+ 777:     </div>
+ 778: </div>
+ 779: 
+ 780: <script>
+ 781: // â”€â”€ Toggle baris detail produk â”€â”€
+ 782: function toggleDetail(rowId) {
+ 783:     const row = document.getElementById(rowId);
+ 784:     if (!row) return;
+ 785:     row.style.display = (row.style.display === 'none' || row.style.display === '') ? 'table-row' : 'none';
+ 786: }
+ 787: 
+ 788: // â”€â”€ Data toko (edit sesuai toko kamu) â”€â”€
+ 789: const TOKO = {
+ 790:     nama: 'BSI Cyber Store',
+ 791:     alamat: 'Jl. Kramat Raya No.98 RT.02/RW.09, Kramat, Senen, Kota Jakarta Pusat, Daerah Khusus Ibukota Jakarta 10450',
+ 792:     logo: "{{ asset('image/logo.png') }}"
+ 793: };
+ 794: 
+ 795: function escHtml(t) {
+ 796:     return String(t ?? '-').replace(/[&<>"']/g, c => ({
+ 797:         '&': '&amp;',
+ 798:         '<': '&lt;',
+ 799:         '>': '&gt;',
+ 800:         '"': '&quot;',
+ 801:         "'": '&#39;'
+ 802:     } [c]));
+ 803: }
+ 804: 
+ 805: // â”€â”€ Cetak invoice dari isi baris detail â”€â”€
+ 806: function cetakInvoice(rowId, btn) {
+ 807:     const row = document.getElementById(rowId);
+ 808:     if (!row) return;
+ 809: 
+ 810:     const d = JSON.parse(btn.dataset.invoice || '{}');
+ 811: 
+ 812:     const tableHtml = row.querySelector('.mini-detail-table')?.outerHTML ??
+ 813:         '<p>Detail produk tidak tersedia.</p>';
+ 814: 
+ 815:     // Hari, tanggal, dan waktu pesanan dibuat, sesuai zona waktu lokasi pemesan (perangkat)
+ 816:     let hariTanggal = '-';
+ 817:     let jam = '-';
+ 818:     if (d.tanggal) {
+ 819:         const tgl = new Date(d.tanggal);
+ 820:         const offsetJam = -tgl.getTimezoneOffset() / 60;
+ 821:         const labelZona = {
+ 822:             7: 'WIB',
+ 823:             8: 'WITA',
+ 824:             9: 'WIT'
+ 825:         } [offsetJam] || Intl.DateTimeFormat().resolvedOptions().timeZone;
+ 826: 
+ 827:         hariTanggal = tgl.toLocaleDateString('id-ID', {
+ 828:             weekday: 'long',
+ 829:             day: '2-digit',
+ 830:             month: 'long',
+ 831:             year: 'numeric'
+ 832:         });
+ 833:         jam = tgl.toLocaleTimeString('id-ID', {
+ 834:             hour: '2-digit',
+ 835:             minute: '2-digit'
+ 836:         }).replace('.', ':') + ' ' + labelZona;
+ 837:     }
+ 838: 
+ 839:     const alamatLengkap = escHtml(d.alamat) + (d.kode_pos ? ' (Kode Pos: ' + escHtml(d.kode_pos) + ')' : '');
+ 840: 
+ 841:     const win = window.open('', '_blank');
+ 842:     win.document.write(`
+ 843:         <html>
+ 844:         <head>
+ 845:             <title>Invoice ${escHtml(d.kode)}</title>
+ 846:             <style>
+ 847:                 body { font-family: Arial, sans-serif; padding: 30px; color: #1e2a3a; }
+ 848:                 .kop { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #1976d2; padding-bottom: 14px; margin-bottom: 18px; }
+ 849:                 .kop img { width: 80px; height: 80px; object-fit: contain; }
+ 850:                 .kop h1 { margin: 0 0 4px; font-size: 22px; }
+ 851:                 .kop p { margin: 0; font-size: 13px; color: #555; }
+ 852:                 h2 { margin: 0 0 8px; }
+ 853:                 p { margin: 4px 0; }
+ 854:                 .info { display: flex; gap: 40px; margin-top: 12px; }
+ 855:                 .info > div { flex: 1; }
+ 856:                 .info h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: #888; letter-spacing: .05em; }
+ 857:                 table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+ 858:                 th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; text-align: left; }
+ 859:                 th { background: #f5f7fa; }
+ 860:             </style>
+ 861:         </head>
+ 862:         <body>
+ 863:             <div class="kop">
+ 864:                 <img src="${TOKO.logo}" alt="Logo">
+ 865:                 <div>
+ 866:                     <h1>${escHtml(TOKO.nama)}</h1>
+ 867:                     <p>${escHtml(TOKO.alamat)}</p>
+ 868:                 </div>
+ 869:             </div>
+ 870: 
+ 871:             <h2>Invoice</h2>
+ 872:             <p>Kode Pesanan: <strong>${escHtml(d.kode)}</strong></p>
+ 873:             <p>Hari/Tanggal: <strong>${hariTanggal}</strong></p>
+ 874:             <p>Waktu: <strong>${jam}</strong></p>
+ 875: 
+ 876:             <div class="info">
+ 877:                 <div>
+ 878:                     <h4>Pemesan</h4>
+ 879:                     <p><strong>${escHtml(d.pemesan)}</strong></p>
+ 880:                 </div>
+ 881:                 <div>
+ 882:                     <h4>Penerima</h4>
+ 883:                     <p><strong>${escHtml(d.penerima)}</strong></p>
+ 884:                     <p>${alamatLengkap}</p>
+ 885:                 </div>
+ 886:             </div>
+ 887: 
+ 888:             ${tableHtml}
+ 889: 
+ 890:             <script>
+ 891:                 window.onload = function () { window.focus(); window.print(); };
+ 892:             <\/script>
+ 893:         </body>
+ 894:         </html>
+ 895:     `);
+ 896:     win.document.close();
+ 897: }
+ 898: 
+ 899: // â”€â”€ Peta ikon & link ekspedisi â”€â”€
+ 900: const EKSPEDISI_MAP = {
+ 901:     'jne': {
+ 902:         label: 'JNE',
+ 903:         nama: 'JNE Express',
+ 904:         link: 'https://www.jne.co.id/id/tracking/trace/'
+ 905:     },
+ 906:     'jnt': {
+ 907:         label: 'J&T',
+ 908:         nama: 'J&T Express',
+ 909:         link: 'https://www.jet.co.id/track'
+ 910:     },
+ 911:     'sicepat': {
+ 912:         label: 'SiCepat',
+ 913:         nama: 'SiCepat Express',
+ 914:         link: 'https://sicepat.com/checkAwb'
+ 915:     },
+ 916:     'anteraja': {
+ 917:         label: 'Anteraja',
+ 918:         nama: 'Anteraja',
+ 919:         link: 'https://anteraja.id/tracking'
+ 920:     },
+ 921:     'pos': {
+ 922:         label: 'POS ID',
+ 923:         nama: 'POS Indonesia',
+ 924:         link: 'https://www.posindonesia.co.id/id/tracking'
+ 925:     },
+ 926:     'tiki': {
+ 927:         label: 'TIKI',
+ 928:         nama: 'TIKI',
+ 929:         link: 'https://www.tiki.id/id/tracking'
+ 930:     },
+ 931:     'ninja': {
+ 932:         label: 'Ninja',
+ 933:         nama: 'Ninja Xpress',
+ 934:         link: 'https://www.ninjaxpress.co/id-id/tracking'
+ 935:     },
+ 936:     'sap': {
+ 937:         label: 'SAP',
+ 938:         nama: 'SAP Express',
+ 939:         link: 'https://sap-express.id/track'
+ 940:     },
+ 941: };
+ 942: 
+ 943: let currentResi = '';
+ 944: 
+ 945: function bukaTracking(idPesanan, kodePesanan, ekspedisi, layanan, resi) {
+ 946:     document.getElementById('mt-loading').style.display = 'block';
+ 947:     document.getElementById('mt-content').style.display = 'none';
+ 948:     document.getElementById('mt-error').style.display = 'none';
+ 949: 
+ 950:     document.getElementById('mt-kode-pesanan').textContent = 'Lacak â€” ' + kodePesanan;
+ 951: 
+ 952:     currentResi = resi;
+ 953: 
+ 954:     $('#modalTracking').modal('show');
+ 955: 
+ 956:     fetch(`/customer/pesanan/${idPesanan}/tracking`, {
+ 957:             headers: {
+ 958:                 'X-Requested-With': 'XMLHttpRequest'
+ 959:             }
+ 960:         })
+ 961:         .then(res => {
+ 962:             if (!res.ok) throw new Error('Server error ' + res.status);
+ 963:             return res.json();
+ 964:         })
+ 965:         .then(data => {
+ 966:             renderTracking(data, ekspedisi, layanan, resi);
+ 967:         })
+ 968:         .catch(err => {
+ 969:             renderTrackingFallback(ekspedisi, layanan, resi);
+ 970:         });
+ 971: }
+ 972: 
+ 973: function renderTracking(data, ekspedisi, layanan, resi) {
+ 974:     const eksp = (data.ekspedisi || ekspedisi || '').toLowerCase();
+ 975:     const lay = data.layanan || layanan || '-';
+ 976:     const noResi = data.no_resi || resi || '-';
+ 977:     const eta = data.estimasi_tiba || 'Dalam estimasi 1â€“2 hari kerja';
+ 978: 
+ 979:     isiTampilanEkspedisi(eksp, lay, noResi, eta);
+ 980: 
+ 981:     if (data.posisi_sekarang) {
+ 982:         document.getElementById('mt-lokasi-nama').textContent = data.posisi_sekarang.nama || '-';
+ 983:         document.getElementById('mt-lokasi-alamat').textContent = data.posisi_sekarang.alamat || '';
+ 984:     } else {
+ 985:         document.getElementById('mt-lokasi-nama').textContent = 'Data posisi belum tersedia';
+ 986:         document.getElementById('mt-lokasi-alamat').textContent = '';
+ 987:     }
+ 988: 
+ 989:     document.getElementById('mt-eta').textContent = eta;
+ 990: 
+ 991:     const timeline = data.riwayat || [];
+ 992:     renderTimeline(timeline);
+ 993: 
+ 994:     tampilkanKonten();
+ 995: }
+ 996: 
+ 997: function renderTrackingFallback(ekspedisi, layanan, resi) {
+ 998:     const eksp = (ekspedisi || '').toLowerCase();
+ 999:     const lay = layanan || '-';
+1000:     const eta = 'Hubungi ekspedisi untuk estimasi tiba';
+1001: 
+1002:     isiTampilanEkspedisi(eksp, lay, resi, eta);
+1003: 
+1004:     document.getElementById('mt-lokasi-nama').textContent = 'Paket sedang dalam pengiriman';
+1005:     document.getElementById('mt-lokasi-alamat').textContent = 'Lacak posisi detail di website ekspedisi';
+1006:     document.getElementById('mt-eta').textContent = eta;
+1007: 
+1008:     renderTimeline([{
+1009:             status: 'Pesanan dikemas oleh penjual',
+1010:             lokasi: 'Gudang Penjual',
+1011:             waktu: '',
+1012:             tipe: 'done'
+1013:         },
+1014:         {
+1015:             status: 'Paket diterima ekspedisi',
+1016:             lokasi: '-',
+1017:             waktu: '',
+1018:             tipe: 'done'
+1019:         },
+1020:         {
+1021:             status: 'Dalam perjalanan pengiriman',
+1022:             lokasi: '-',
+1023:             waktu: '',
+1024:             tipe: 'current'
+1025:         },
+1026:         {
+1027:             status: 'Paket tiba di tujuan',
+1028:             lokasi: '-',
+1029:             waktu: '',
+1030:             tipe: 'pending'
+1031:         },
+1032:     ]);
+1033: 
+1034:     tampilkanKonten();
+1035: }
+1036: 
+1037: function isiTampilanEkspedisi(eksp, layanan, resi, eta) {
+1038:     const info = EKSPEDISI_MAP[eksp] || {
+1039:         label: eksp.toUpperCase() || '?',
+1040:         nama: eksp || 'Ekspedisi',
+1041:         link: '#'
+1042:     };
+1043: 
+1044:     document.getElementById('mt-logo').textContent = info.label;
+1045:     document.getElementById('mt-ekspedisi-nama').textContent = info.nama;
+1046:     document.getElementById('mt-layanan').textContent = layanan !== '-' ? 'Layanan: ' + layanan : '';
+1047:     document.getElementById('mt-resi').textContent = resi || '-';
+1048: 
+1049:     const linkEl = document.getElementById('mt-link-cek');
+1050:     linkEl.href = resi ? (info.link + resi) : info.link;
+1051: }
+1052: 
+1053: function renderTimeline(items) {
+1054:     const ul = document.getElementById('mt-timeline');
+1055:     ul.innerHTML = '';
+1056: 
+1057:     const ikonMap = {
+1058:         'current': {
+1059:             icon: 'fas fa-truck',
+1060:             cls: 'current'
+1061:         },
+1062:         'done': {
+1063:             icon: 'fas fa-check',
+1064:             cls: 'done'
+1065:         },
+1066:         'pending': {
+1067:             icon: 'fas fa-circle',
+1068:             cls: 'pending'
+1069:         },
+1070:     };
+1071: 
+1072:     items.forEach((item, idx) => {
+1073:         const tipe = item.tipe || (idx === 0 ? 'current' : 'done');
+1074:         const m = ikonMap[tipe] || ikonMap['done'];
+1075: 
+1076:         const li = document.createElement('li');
+1077:         li.innerHTML = `
+1078:             <div class="tl-icon-wrap">
+1079:                 <div class="tl-icon ${m.cls}">
+1080:                     <i class="${m.icon}" style="font-size:11px;"></i>
+1081:                 </div>
+1082:             </div>
+1083:             <div class="tl-content">
+1084:                 <div class="tl-event ${tipe === 'pending' ? 'pending' : ''}">${item.status || '-'}</div>
+1085:                 ${item.lokasi ? `<div class="tl-lokasi"><i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:3px;"></i>${item.lokasi}</div>` : ''}
+1086:                 ${item.waktu  ? `<div class="tl-waktu"><i class="far fa-clock" style="font-size:10px;margin-right:3px;"></i>${item.waktu}</div>`  : ''}
+1087:             </div>
+1088:         `;
+1089:         ul.appendChild(li);
+1090:     });
+1091: 
+1092:     if (items.length === 0) {
+1093:         ul.innerHTML =
+1094:             '<li><div class="tl-content"><div class="tl-event pending">Belum ada riwayat perjalanan.</div></div></li>';
+1095:     }
+1096: }
+1097: 
+1098: function tampilkanKonten() {
+1099:     document.getElementById('mt-loading').style.display = 'none';
+1100:     document.getElementById('mt-content').style.display = 'block';
+1101: }
+1102: 
+1103: function salinResi() {
+1104:     if (!currentResi) return;
+1105:     navigator.clipboard.writeText(currentResi)
+1106:         .then(() => {
+1107:             const btn = document.querySelector('.resi-copy-btn');
+1108:             btn.innerHTML = '<i class="fas fa-check"></i> Disalin!';
+1109:             setTimeout(() => {
+1110:                 btn.innerHTML = '<i class="far fa-copy"></i> Salin';
+1111:             }, 2000);
+1112:         })
+1113:         .catch(() => alert('Resi: ' + currentResi));
+1114: }
+1115: 
+1116: // â”€â”€ Auto-buka tracking/detail kalau datang dari link notifikasi â”€â”€
+1117: document.addEventListener('DOMContentLoaded', function() {
+1118:     const params = new URLSearchParams(window.location.search);
+1119:     const lacakId = params.get('lacak');
+1120:     const highlightId = params.get('highlight');
+1121: 
+1122:     if (lacakId) {
+1123:         const row = document.querySelector(`tr[data-pesanan-id="${lacakId}"]`);
+1124:         const btn = row ? row.querySelector('.btn-lacak-sm') : null;
+1125:         if (btn) btn.click();
+1126:     }
+1127: 
+1128:     if (highlightId) {
+1129:         const row = document.querySelector(`tr[data-pesanan-id="${highlightId}"]`);
+1130:         if (row) {
+1131:             row.scrollIntoView({
+1132:                 behavior: 'smooth',
+1133:                 block: 'center'
+1134:             });
+1135:             row.style.background = '#fff8e1';
+1136:             const kodeLink = row.querySelector('.kode-pesanan-link');
+1137:             if (kodeLink) kodeLink.click();
+1138:         }
+1139:     }
+1140: });
+1141: </script>
+1142: 
+1143: @endsection

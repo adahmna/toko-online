@@ -36,7 +36,7 @@
     font-size: 18px;
 }
 
-/* ── TABEL HISTORY ── */
+/* â”€â”€ TABEL HISTORY â”€â”€ */
 .history-table-wrap {
     background: #fff;
     border-radius: 12px;
@@ -160,7 +160,7 @@
     color: #fff;
 }
 
-/* ── ROW DETAIL (expand) ── */
+/* â”€â”€ ROW DETAIL (expand) â”€â”€ */
 .row-detail td {
     background: #fafbfc;
     padding: 0 !important;
@@ -195,7 +195,7 @@
     border-bottom: none;
 }
 
-/* ── STATUS BADGE ── */
+/* â”€â”€ STATUS BADGE â”€â”€ */
 .status-badge {
     display: inline-block;
     padding: 3px 10px;
@@ -236,7 +236,7 @@
     color: #383d41;
 }
 
-/* ── KOSONG ── */
+/* â”€â”€ KOSONG â”€â”€ */
 .empty-state {
     text-align: center;
     padding: 60px 20px;
@@ -255,7 +255,7 @@
     margin-bottom: 16px;
 }
 
-/* ── MODAL TRACKING (tetap dipakai, tidak diubah) ── */
+/* â”€â”€ MODAL TRACKING (tetap dipakai, tidak diubah) â”€â”€ */
 .modal-tracking .modal-dialog {
     max-width: 560px;
 }
@@ -542,6 +542,73 @@
     }
 }
 
+.tl-foto-label {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #0d6efd;
+    background: #e7f1ff;
+    border-radius: 4px;
+    padding: 1px 8px;
+    margin-bottom: 4px;
+}
+
+.tl-foto-img {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #e5e5e5;
+    cursor: zoom-in;
+    display: block;
+    margin-top: 4px;
+}
+
+.tl-foto-ket {
+    font-size: 12px;
+    color: #555;
+    margin-top: 4px;
+}
+
+.btn-ulas {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #e67700;
+    background: #fff8e1;
+    border: 1px solid #ffe08a;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.btn-ulas:hover {
+    background: #ffefb3;
+}
+
+.ulasan-done {
+    font-size: 11px;
+    color: #2f9e44;
+    margin-top: 4px;
+}
+
+.ul-bintang {
+    font-size: 32px;
+    line-height: 1;
+    margin-bottom: 12px;
+}
+
+.ul-star {
+    cursor: pointer;
+    color: #d0d0d0;
+    margin-right: 2px;
+}
+
+.ul-star.on {
+    color: #f59f00;
+}
+
 .tracking-loading {
     text-align: center;
     padding: 40px 20px;
@@ -559,6 +626,39 @@
     text-align: center;
     padding: 30px 20px;
     color: #721c24;
+}
+
+/* â”€â”€ MOBILE: konten riwayat belanja rata tengah â”€â”€ */
+@media (max-width: 768px) {
+    .riwayat-wrapper {
+        width: 100%;
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 0 12px;
+        box-sizing: border-box;
+    }
+
+    .riwayat-header {
+        justify-content: center;
+    }
+
+    .history-table-wrap {
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .history-table-scroll {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .history-table thead th,
+    .history-table tbody td {
+        padding: 10px 10px;
+    }
+
+    .detail-actions {
+        justify-content: flex-start;
+    }
 }
 </style>
 
@@ -635,13 +735,23 @@
                                     <i class="fas fa-file-invoice"></i> Invoice
                                 </button>
 
-                                @if($status === 'dikirim' && !empty($p->no_resi))
+                                @if(in_array($status, ['dikirim','selesai']) && !empty($p->no_resi))
                                 <button type="button" class="btn-aksi btn-lacak-sm"
                                     onclick="bukaTracking({{ $p->id }}, '{{ $p->kode_pesanan ?? '#'.$p->id }}', '{{ $p->ekspedisi ?? '' }}', '{{ $p->layanan_ekspedisi ?? '' }}', '{{ $p->no_resi ?? '' }}')">
                                     <i class="fas fa-map-marker-alt"></i> Lacak
                                 </button>
                                 @endif
 
+                                @php $fotoBukti = $p->fotoBukti; @endphp
+                                @if($fotoBukti->count())
+                                <button type="button" class="btn-aksi btn-lacak-sm" data-foto="{{ json_encode($fotoBukti->map(fn($f) => [
+                                        'url'        => asset('storage/' . $f->foto),
+                                        'keterangan' => $f->keterangan,
+                                        'waktu'      => $f->created_at->format('d M Y, H:i') . ' WIB',
+                                    ])->values()) }}" onclick="bukaGaleriBukti(this)">
+                                    <i class="fas fa-camera"></i> Foto Bukti
+                                </button>
+                                @endif
                                 @if($status === 'menunggu pembayaran')
                                 <a href="{{ route('customer.checkout.pembayaran', $p->id) }}"
                                     class="btn-aksi btn-bayar-sm">
@@ -669,7 +779,25 @@
                                     <tbody>
                                         @foreach($p->details as $d)
                                         <tr>
-                                            <td>{{ $d->nama_produk ?? ($d->produk->nama_produk ?? '-') }}</td>
+                                            <td>
+                                                {{ $d->nama_produk ?? ($d->produk->nama_produk ?? '-') }}
+                                                @if($status === 'selesai' && $d->produk_id)
+                                                @php
+                                                $produkSudahUlas = collect($sudahUlas)->has($p->id . '-' . $d->produk_id);
+                                                @endphp
+                                                @if($produkSudahUlas)
+                                                <div class="ulasan-done"><i class="fas fa-check-circle"></i> Sudah
+                                                    diulas</div>
+                                                @else
+                                                <button type="button" class="btn-ulas" data-pesanan="{{ $p->id }}"
+                                                    data-produk="{{ $d->produk_id }}"
+                                                    data-nama="{{ $d->nama_produk ?? ($d->produk->nama_produk ?? '-') }}"
+                                                    onclick="bukaUlasan(this)">
+                                                    <i class="fas fa-star"></i> Beri Ulasan
+                                                </button>
+                                                @endif
+                                                @endif
+                                            </td>
                                             <td class="text-center">{{ $d->jumlah }}</td>
                                             <td class="text-right">Rp {{ number_format($d->harga, 0, ',', '.') }}</td>
                                             <td class="text-right">Rp {{ number_format($d->subtotal, 0, ',', '.') }}
@@ -694,9 +822,57 @@
 
 </div>
 
-{{-- ══════════════════════════════════════════════ --}}
+{{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
+{{-- MODAL BERI ULASAN PRODUK                       --}}
+{{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<div class="modal fade" id="modalUlasan" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content" style="border-radius:12px; overflow:hidden;">
+            <form id="formUlasan" enctype="multipart/form-data" onsubmit="return kirimUlasan(event)">
+                @csrf
+                <input type="hidden" name="produk_id" id="ul-produk-id">
+                <input type="hidden" name="rating" id="ul-rating" value="0">
+                <div class="modal-header">
+                    <h5 class="modal-title">Beri Ulasan</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Tutup">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="ul-nama" style="font-weight:600; margin-bottom:10px;"></div>
+                    <div id="ul-bintang" class="ul-bintang">
+                        <span class="ul-star" data-v="1" onclick="setBintang(1)">&#9733;</span>
+                        <span class="ul-star" data-v="2" onclick="setBintang(2)">&#9733;</span>
+                        <span class="ul-star" data-v="3" onclick="setBintang(3)">&#9733;</span>
+                        <span class="ul-star" data-v="4" onclick="setBintang(4)">&#9733;</span>
+                        <span class="ul-star" data-v="5" onclick="setBintang(5)">&#9733;</span>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:12px; font-weight:600;">Tulis ulasanmu <span
+                                class="text-danger">*</span></label>
+                        <textarea name="komentar" id="ul-komentar" class="form-control" rows="5" maxlength="1000"
+                            oninput="document.getElementById('ul-hitung').textContent = this.value.length"
+                            placeholder="Ceritakan pengalamanmu: kualitas produk, kesesuaian ukuran/warna, kemasan, pengiriman, dll. (minimal 10 karakter)"></textarea>
+                        <div style="font-size:11px; color:#888; text-align:right;"><span id="ul-hitung">0</span>/1000
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:6px;">
+                        <label style="font-size:12px; font-weight:600;">Foto (opsional, maks 3 MB)</label>
+                        <input type="file" name="foto" class="form-control" accept="image/*">
+                    </div>
+                    <div id="ul-error" class="text-danger" style="font-size:12px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-sm btn-primary" id="ul-submit">Kirim Ulasan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
 {{-- MODAL TRACKING PENGIRIMAN (tidak diubah)       --}}
-{{-- ══════════════════════════════════════════════ --}}
+{{-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• --}}
 <div class="modal fade modal-tracking" id="modalTracking" tabindex="-1" role="dialog"
     aria-labelledby="modalTrackingLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" role="document">
@@ -725,6 +901,16 @@
                 </div>
 
                 <div id="mt-content" style="display:none;">
+
+                    <div id="mt-demo"
+                        style="display:none;background:#fff3cd;color:#856404;border-radius:6px;padding:6px 10px;font-size:12px;margin-bottom:12px;">
+                        Mode contoh: data di bawah bukan data asli dari ekspedisi.
+                    </div>
+
+                    <div id="mt-peta-wrap" style="display:none;margin-bottom:14px;">
+                        <div id="mt-peta" style="height:200px;border-radius:10px;border:1px solid #dde8f8;"></div>
+                        <div id="mt-peta-ket" style="font-size:11px;color:#888;margin-top:4px;"></div>
+                    </div>
 
                     <div class="ekspedisi-info-box">
                         <div class="ekspedisi-logo-box" id="mt-logo">JNE</div>
@@ -755,6 +941,31 @@
                         </div>
                     </div>
 
+                    <div id="mt-kurir-box"
+                        style="display:none;background:#f8f9fa;border:1px solid #e3e6ea;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+                        <div style="font-size:11px;color:#888;">Kurir pengantar</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                            <b id="mt-kurir-nama" style="font-size:13px;"></b>
+                            <a id="mt-kurir-telp" href="#" style="font-size:13px;font-weight:600;color:#1976d2;"></a>
+                        </div>
+                    </div>
+
+                    <div id="mt-rating"
+                        style="display:none;text-align:center;border:1px solid #e3e6ea;border-radius:8px;padding:14px;margin-bottom:14px;">
+                        <div id="mt-rating-judul" style="font-size:13px;font-weight:700;margin-bottom:10px;"></div>
+                        <div id="mt-rating-bintang"></div>
+                        <div id="mt-ulasan-form" style="display:none;margin-top:12px;text-align:left;">
+                            <textarea id="mt-ulasan-input" class="form-control" rows="3" maxlength="500"
+                                placeholder="Tulis pengalamanmu dengan pengiriman (opsional), misalnya kecepatan, kondisi paket, keramahan kurir"></textarea>
+                            <div style="font-size:11px;color:#888;text-align:right;"><span
+                                    id="mt-ulasan-hitung">0</span>/500</div>
+                            <button type="button" id="mt-ulasan-kirim" class="btn btn-sm btn-primary"
+                                style="margin-top:6px;">Kirim Penilaian</button>
+                        </div>
+                        <div id="mt-ulasan-teks"
+                            style="display:none;margin-top:10px;font-size:13px;color:#444;white-space:pre-wrap;"></div>
+                    </div>
+
                     <div class="tracking-section-title">Riwayat Perjalanan Paket</div>
                     <ul class="timeline-list" id="mt-timeline">
                         {{-- Diisi oleh JS --}}
@@ -778,14 +989,14 @@
 </div>
 
 <script>
-// ── Toggle baris detail produk ──
+// â”€â”€ Toggle baris detail produk â”€â”€
 function toggleDetail(rowId) {
     const row = document.getElementById(rowId);
     if (!row) return;
     row.style.display = (row.style.display === 'none' || row.style.display === '') ? 'table-row' : 'none';
 }
 
-// ── Data toko (edit sesuai toko kamu) ──
+// â”€â”€ Data toko (edit sesuai toko kamu) â”€â”€
 const TOKO = {
     nama: 'BSI Cyber Store',
     alamat: 'Jl. Kramat Raya No.98 RT.02/RW.09, Kramat, Senen, Kota Jakarta Pusat, Daerah Khusus Ibukota Jakarta 10450',
@@ -802,7 +1013,7 @@ function escHtml(t) {
     } [c]));
 }
 
-// ── Cetak invoice dari isi baris detail ──
+// â”€â”€ Cetak invoice dari isi baris detail â”€â”€
 function cetakInvoice(rowId, btn) {
     const row = document.getElementById(rowId);
     if (!row) return;
@@ -896,7 +1107,7 @@ function cetakInvoice(rowId, btn) {
     win.document.close();
 }
 
-// ── Peta ikon & link ekspedisi ──
+// â”€â”€ Peta ikon & link ekspedisi â”€â”€
 const EKSPEDISI_MAP = {
     'jne': {
         label: 'JNE',
@@ -940,14 +1151,115 @@ const EKSPEDISI_MAP = {
     },
 };
 
+function bukaGaleriBukti(btn) {
+    let list = [];
+    try {
+        list = JSON.parse(btn.dataset.foto || '[]');
+    } catch (e) {}
+    if (!list.length) return;
+
+    const ov = document.createElement('div');
+    ov.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:3000;overflow:auto;padding:24px 16px;cursor:zoom-out;';
+    const judul = document.createElement('div');
+    judul.textContent = 'Foto dari penjual';
+    judul.style.cssText = 'color:#fff;font-weight:700;text-align:center;margin-bottom:16px;';
+    ov.appendChild(judul);
+
+    list.forEach(f => {
+        const box = document.createElement('div');
+        box.style.cssText = 'max-width:640px;margin:0 auto 20px;text-align:center;color:#ddd;font-size:13px;';
+        const img = document.createElement('img');
+        img.src = f.url;
+        img.style.cssText = 'max-width:100%;border-radius:8px;';
+        box.appendChild(img);
+        if (f.keterangan) {
+            const k = document.createElement('div');
+            k.textContent = f.keterangan;
+            k.style.marginTop = '6px';
+            box.appendChild(k);
+        }
+        const w = document.createElement('div');
+        w.textContent = f.waktu || '';
+        w.style.cssText = 'font-size:12px;color:#aaa;';
+        box.appendChild(w);
+        ov.appendChild(box);
+    });
+
+    ov.addEventListener('click', () => ov.remove());
+    document.body.appendChild(ov);
+}
+
+function bukaUlasan(btn) {
+    document.getElementById('formUlasan').reset();
+    document.getElementById('ul-produk-id').value = btn.dataset.produk;
+    document.getElementById('ul-nama').textContent = btn.dataset.nama || '';
+    document.getElementById('ul-error').textContent = '';
+    document.getElementById('ul-hitung').textContent = '0';
+    window.ulasanPesananId = btn.dataset.pesanan;
+    setBintang(0);
+    $('#modalUlasan').modal('show');
+}
+
+function setBintang(n) {
+    document.getElementById('ul-rating').value = n;
+    document.querySelectorAll('#ul-bintang .ul-star').forEach(s => {
+        s.classList.toggle('on', parseInt(s.dataset.v) <= n);
+    });
+}
+
+function kirimUlasan(e) {
+    e.preventDefault();
+    const err = document.getElementById('ul-error');
+    err.textContent = '';
+    if (!parseInt(document.getElementById('ul-rating').value)) {
+        err.textContent = 'Pilih jumlah bintang dulu.';
+        return false;
+    }
+    if (document.getElementById('ul-komentar').value.trim().length < 10) {
+        err.textContent = 'Tulis ulasanmu dulu, minimal 10 karakter.';
+        return false;
+    }
+    const btn = document.getElementById('ul-submit');
+    btn.disabled = true;
+
+    fetch(`/customer/pesanan/${window.ulasanPesananId}/ulasan`, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: new FormData(document.getElementById('formUlasan'))
+        })
+        .then(async res => {
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                let msg = j.message || 'Gagal mengirim ulasan.';
+                if (j.errors) msg = Object.values(j.errors).flat().join(' ');
+                throw new Error(msg);
+            }
+            $('#modalUlasan').modal('hide');
+            alert('Terima kasih, ulasan kamu sudah terkirim.');
+            location.reload();
+        })
+        .catch(ex => {
+            err.textContent = ex.message;
+        })
+        .finally(() => {
+            btn.disabled = false;
+        });
+
+    return false;
+}
 let currentResi = '';
 
 function bukaTracking(idPesanan, kodePesanan, ekspedisi, layanan, resi) {
     document.getElementById('mt-loading').style.display = 'block';
     document.getElementById('mt-content').style.display = 'none';
     document.getElementById('mt-error').style.display = 'none';
+    resetTambahan();
 
-    document.getElementById('mt-kode-pesanan').textContent = 'Lacak — ' + kodePesanan;
+    document.getElementById('mt-kode-pesanan').textContent = 'Lacak â€” ' + kodePesanan;
 
     currentResi = resi;
 
@@ -964,6 +1276,7 @@ function bukaTracking(idPesanan, kodePesanan, ekspedisi, layanan, resi) {
         })
         .then(data => {
             renderTracking(data, ekspedisi, layanan, resi);
+            renderTambahan(data, idPesanan);
         })
         .catch(err => {
             renderTrackingFallback(ekspedisi, layanan, resi);
@@ -971,12 +1284,18 @@ function bukaTracking(idPesanan, kodePesanan, ekspedisi, layanan, resi) {
 }
 
 function renderTracking(data, ekspedisi, layanan, resi) {
+    if (data.tersedia === false) {
+        renderTrackingFallback(ekspedisi, layanan, resi, data.pesan);
+        return;
+    }
     const eksp = (data.ekspedisi || ekspedisi || '').toLowerCase();
     const lay = data.layanan || layanan || '-';
     const noResi = data.no_resi || resi || '-';
-    const eta = data.estimasi_tiba || 'Dalam estimasi 1–2 hari kerja';
+    const eta = data.estimasi_tiba || 'Dalam estimasi 1â€“2 hari kerja';
 
     isiTampilanEkspedisi(eksp, lay, noResi, eta);
+    document.querySelector('#mt-lokasi-box .lokasi-title').innerHTML =
+        '<span class="pulse-dot"></span> Posisi kurir sekarang';
 
     if (data.posisi_sekarang) {
         document.getElementById('mt-lokasi-nama').textContent = data.posisi_sekarang.nama || '-';
@@ -994,43 +1313,18 @@ function renderTracking(data, ekspedisi, layanan, resi) {
     tampilkanKonten();
 }
 
-function renderTrackingFallback(ekspedisi, layanan, resi) {
+function renderTrackingFallback(ekspedisi, layanan, resi, pesan) {
     const eksp = (ekspedisi || '').toLowerCase();
-    const lay = layanan || '-';
-    const eta = 'Hubungi ekspedisi untuk estimasi tiba';
 
-    isiTampilanEkspedisi(eksp, lay, resi, eta);
+    isiTampilanEkspedisi(eksp, layanan || '-', resi, '-');
+    document.querySelector('#mt-lokasi-box .lokasi-title').innerHTML =
+        '<span class="pulse-dot" style="background:#adb5bd;animation:none;"></span> Status pelacakan';
 
-    document.getElementById('mt-lokasi-nama').textContent = 'Paket sedang dalam pengiriman';
-    document.getElementById('mt-lokasi-alamat').textContent = 'Lacak posisi detail di website ekspedisi';
-    document.getElementById('mt-eta').textContent = eta;
+    document.getElementById('mt-lokasi-nama').textContent = 'Data pelacakan belum tersedia';
+    document.getElementById('mt-lokasi-alamat').textContent = pesan || 'Silakan cek langsung di website ekspedisi.';
+    document.getElementById('mt-eta').textContent = '-';
 
-    renderTimeline([{
-            status: 'Pesanan dikemas oleh penjual',
-            lokasi: 'Gudang Penjual',
-            waktu: '',
-            tipe: 'done'
-        },
-        {
-            status: 'Paket diterima ekspedisi',
-            lokasi: '-',
-            waktu: '',
-            tipe: 'done'
-        },
-        {
-            status: 'Dalam perjalanan pengiriman',
-            lokasi: '-',
-            waktu: '',
-            tipe: 'current'
-        },
-        {
-            status: 'Paket tiba di tujuan',
-            lokasi: '-',
-            waktu: '',
-            tipe: 'pending'
-        },
-    ]);
-
+    renderTimeline([]);
     tampilkanKonten();
 }
 
@@ -1081,9 +1375,9 @@ function renderTimeline(items) {
                 </div>
             </div>
             <div class="tl-content">
-                <div class="tl-event ${tipe === 'pending' ? 'pending' : ''}">${item.status || '-'}</div>
-                ${item.lokasi ? `<div class="tl-lokasi"><i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:3px;"></i>${item.lokasi}</div>` : ''}
-                ${item.waktu  ? `<div class="tl-waktu"><i class="far fa-clock" style="font-size:10px;margin-right:3px;"></i>${item.waktu}</div>`  : ''}
+                <div class="tl-event ${tipe === 'pending' ? 'pending' : ''}">${escHtml(item.status || '-')}</div>
+                ${item.lokasi ? `<div class="tl-lokasi"><i class="fas fa-map-marker-alt" style="font-size:10px;margin-right:3px;"></i>${escHtml(item.lokasi)}</div>` : ''}
+                ${item.waktu  ? `<div class="tl-waktu"><i class="far fa-clock" style="font-size:10px;margin-right:3px;"></i>${escHtml(item.waktu)}</div>`  : ''}
             </div>
         `;
         ul.appendChild(li);
@@ -1093,6 +1387,227 @@ function renderTimeline(items) {
         ul.innerHTML =
             '<li><div class="tl-content"><div class="tl-event pending">Belum ada riwayat perjalanan.</div></div></li>';
     }
+}
+
+function bukaFotoBukti(url) {
+    const ov = document.createElement('div');
+    ov.style.cssText =
+        'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:16px;';
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'max-width:100%;max-height:100%;border-radius:8px;';
+    ov.appendChild(img);
+    ov.addEventListener('click', () => ov.remove());
+    document.body.appendChild(ov);
+}
+
+function renderFotoBukti(list) {
+    const ul = document.getElementById('mt-timeline');
+    if (!ul) return;
+    ul.querySelectorAll('li.tl-foto').forEach(el => el.remove());
+    if (!Array.isArray(list) || list.length === 0) return;
+
+    if (ul.children.length === 1 && ul.textContent.indexOf('Belum ada riwayat') !== -1) {
+        ul.innerHTML = '';
+    }
+
+    // list terbaru di index 0, disisipkan dari belakang supaya yang terbaru paling atas
+    for (let i = list.length - 1; i >= 0; i--) {
+        const f = list[i];
+        const li = document.createElement('li');
+        li.className = 'tl-foto';
+        li.innerHTML = `
+            <div class="tl-icon-wrap">
+                <div class="tl-icon done">
+                    <i class="fas fa-camera" style="font-size:11px;"></i>
+                </div>
+            </div>
+            <div class="tl-content">
+                <span class="tl-foto-label">Foto dari penjual</span>
+                <img class="tl-foto-img" src="${escHtml(f.url)}" alt="Foto dari penjual">
+                ${f.keterangan ? `<div class="tl-foto-ket">${escHtml(f.keterangan)}</div>` : ''}
+                ${f.waktu ? `<div class="tl-waktu"><i class="far fa-clock" style="font-size:10px;margin-right:3px;"></i>${escHtml(f.waktu)}</div>` : ''}
+            </div>
+        `;
+        li.querySelector('img').addEventListener('click', () => bukaFotoBukti(f.url));
+        ul.insertBefore(li, ul.firstChild);
+    }
+}
+let petaObj = null;
+
+function resetTambahan() {
+    ['mt-peta-wrap', 'mt-kurir-box', 'mt-rating', 'mt-demo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+
+function renderTambahan(data, idPesanan) {
+    document.getElementById('mt-demo').style.display = data.demo ? 'block' : 'none';
+    renderPeta(data.peta);
+    renderKurir(data.kurir);
+    renderRating(data, idPesanan);
+    renderFotoBukti(data.foto_bukti);
+}
+
+function renderPeta(peta) {
+    const wrap = document.getElementById('mt-peta-wrap');
+    if (!peta || (!peta.asal && !peta.tujuan) || typeof L === 'undefined') {
+        wrap.style.display = 'none';
+        return;
+    }
+
+    wrap.style.display = 'block';
+    if (petaObj) {
+        petaObj.remove();
+        petaObj = null;
+    }
+
+    petaObj = L.map('mt-peta', {
+        scrollWheelZoom: false
+    });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(petaObj);
+
+    const titik = [];
+    if (peta.asal) {
+        const p = [peta.asal.lat, peta.asal.lng];
+        L.marker(p).addTo(petaObj).bindTooltip('Asal: BSI Cyber Store');
+        titik.push(p);
+    }
+    if (peta.tujuan) {
+        const p = [peta.tujuan.lat, peta.tujuan.lng];
+        L.marker(p).addTo(petaObj).bindTooltip('Tujuan: alamat penerima');
+        titik.push(p);
+    }
+    if (titik.length > 1) {
+        L.polyline(titik, {
+            color: '#1976d2',
+            weight: 3,
+            dashArray: '6 8'
+        }).addTo(petaObj);
+    }
+
+    document.getElementById('mt-peta-ket').textContent =
+        'Pin asal dan alamat tujuan. Garis putus-putus hanya penunjuk arah, bukan rute kurir.';
+
+    setTimeout(() => {
+        petaObj.invalidateSize();
+        if (titik.length > 1) petaObj.fitBounds(titik, {
+            padding: [30, 30]
+        });
+        else petaObj.setView(titik[0], 13);
+    }, 400);
+}
+
+function renderKurir(k) {
+    const box = document.getElementById('mt-kurir-box');
+    if (!k) {
+        box.style.display = 'none';
+        return;
+    }
+    document.getElementById('mt-kurir-nama').textContent = k.nama || 'Kurir';
+    const tel = document.getElementById('mt-kurir-telp');
+    if (k.telp) {
+        tel.textContent = k.telp;
+        tel.href = 'tel:' + k.telp;
+        tel.style.display = 'inline';
+    } else {
+        tel.style.display = 'none';
+    }
+    box.style.display = 'block';
+}
+
+let ratingPilihan = 0;
+
+function renderRating(data, idPesanan) {
+    const box = document.getElementById('mt-rating');
+    if (!data.bisa_rating) {
+        box.style.display = 'none';
+        return;
+    }
+    box.style.display = 'block';
+    ratingPilihan = data.rating_logistik || 0;
+    if (data.sudah_ulas_produk && !data.rating_logistik) {
+        document.getElementById('mt-rating-judul').textContent = 'Kamu sudah mengulas produk pesanan ini.';
+        document.getElementById('mt-rating-bintang').innerHTML = '';
+        document.getElementById('mt-ulasan-form').style.display = 'none';
+        document.getElementById('mt-ulasan-teks').style.display = 'none';
+        return;
+    }
+    gambarBintang(ratingPilihan, idPesanan, !!data.rating_logistik, data.ulasan_logistik || '');
+}
+
+function gambarBintang(nilai, idPesanan, terkunci, ulasan) {
+    const wrap = document.getElementById('mt-rating-bintang');
+    const form = document.getElementById('mt-ulasan-form');
+    const input = document.getElementById('mt-ulasan-input');
+    const teks = document.getElementById('mt-ulasan-teks');
+    wrap.innerHTML = '';
+    document.getElementById('mt-rating-judul').textContent = terkunci ?
+        'Terima kasih atas penilaian Anda untuk logistik' :
+        'Seberapa puaskah Anda dengan logistik?';
+
+    for (let i = 1; i <= 5; i++) {
+        const b = document.createElement('i');
+        b.className = (i <= nilai ? 'fas' : 'far') + ' fa-star';
+        b.style.cssText = 'font-size:26px;margin-right:10px;color:' + (i <= nilai ? '#f5a623' : '#c4c9d1') +
+            ';cursor:' + (terkunci ? 'default' : 'pointer');
+        if (!terkunci) b.addEventListener('click', () => {
+            ratingPilihan = i;
+            gambarBintang(i, idPesanan, false, input.value);
+        });
+        wrap.appendChild(b);
+    }
+
+    if (terkunci) {
+        form.style.display = 'none';
+        teks.style.display = ulasan ? 'block' : 'none';
+        teks.textContent = ulasan || '';
+    } else {
+        teks.style.display = 'none';
+        form.style.display = nilai > 0 ? 'block' : 'none';
+        input.value = ulasan || '';
+        document.getElementById('mt-ulasan-hitung').textContent = input.value.length;
+        input.oninput = () => {
+            document.getElementById('mt-ulasan-hitung').textContent = input.value.length;
+        };
+        document.getElementById('mt-ulasan-kirim').onclick = () => kirimRating(idPesanan);
+    }
+}
+
+function kirimRating(idPesanan) {
+    if (!ratingPilihan) return;
+    const nilai = ratingPilihan;
+    const ulasan = document.getElementById('mt-ulasan-input').value.trim();
+    const btn = document.getElementById('mt-ulasan-kirim');
+    btn.disabled = true;
+
+    fetch(`/customer/pesanan/${idPesanan}/rating-logistik`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                rating: nilai,
+                ulasan: ulasan
+            })
+        })
+        .then(async r => {
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.message || 'gagal');
+            return j;
+        })
+        .then(() => gambarBintang(nilai, idPesanan, true, ulasan))
+        .catch(e => alert(e.message && e.message !== 'gagal' ? e.message : 'Gagal menyimpan penilaian. Coba lagi.'))
+        .finally(() => {
+            btn.disabled = false;
+        });
 }
 
 function tampilkanKonten() {
@@ -1113,7 +1628,7 @@ function salinResi() {
         .catch(() => alert('Resi: ' + currentResi));
 }
 
-// ── Auto-buka tracking/detail kalau datang dari link notifikasi ──
+// â”€â”€ Auto-buka tracking/detail kalau datang dari link notifikasi â”€â”€
 document.addEventListener('DOMContentLoaded', function() {
     const params = new URLSearchParams(window.location.search);
     const lacakId = params.get('lacak');

@@ -62,13 +62,19 @@
                             <tr>
                                 <td>{{ $loop->iteration }}</td>
                                 <td class="text-center">
-                                    @if ($row->foto && file_exists(public_path('storage/img-user/' . $row->foto)))
-                                    <img src="{{ asset('storage/img-user/' . $row->foto) }}" alt="{{ $row->nama }}"
+                                    @php
+                                        $fotoUrl = asset('image/logo.png');
+                                        if ($row->foto) {
+                                            foreach (['img-customer', 'img-user'] as $folder) {
+                                                if (file_exists(public_path('storage/' . $folder . '/' . $row->foto))) {
+                                                    $fotoUrl = asset('storage/' . $folder . '/' . $row->foto);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    @endphp
+                                    <img src="{{ $fotoUrl }}" alt="{{ $row->nama }}"
                                         class="rounded-circle" style="width: 45px; height: 45px; object-fit: cover;">
-                                    @else
-                                    <img src="{{ asset('image/logo.png') }}" alt="{{ $row->nama }}"
-                                        class="rounded-circle" style="width: 45px; height: 45px; object-fit: cover;">
-                                    @endif
                                 </td>
                                 <td>{{ $row->email }}</td>
                                 <td class="text-nowrap">{{ $row->hp ?: '-' }}</td>

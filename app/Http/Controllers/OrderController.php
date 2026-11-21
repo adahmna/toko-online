@@ -41,6 +41,13 @@ class OrderController extends Controller
             ->with('error', 'Akun ini belum terdaftar sebagai customer. Silakan login dengan akun customer.');
     }
 
+    private function kembalikanStok(Pesanan $pesanan): void
+    {
+        foreach (PesananDetail::where('pesanan_id', $pesanan->id)->get() as $d) {
+            Produk::where('id', $d->produk_id)->increment('stok', $d->jumlah);
+        }
+    }
+
     public function addToCart(Request $request, $id)
     {
         $customer = $this->customerSaatIni();
@@ -239,6 +246,15 @@ class OrderController extends Controller
             return redirect()->route('order.cart')->with('error', 'Keranjang belanja kosong.');
         }
 
+        // Cek stok dulu sebelum pesanan dibuat
+        foreach ($order->orderItems as $item) {
+            $stokSekarang = (int) Produk::where('id', $item->produk_id)->value('stok');
+            if ($stokSekarang < $item->jumlah) {
+                return redirect()->route('order.cart')
+                    ->with('error', 'Stok produk "' . $item->nama_produk . '" tidak mencukupi. Sisa stok: ' . $stokSekarang);
+            }
+        }
+
         $pesanan = Pesanan::create([
             'user_id'           => Auth::id(),
             'kode_pesanan'      => 'TRX-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
@@ -264,6 +280,11 @@ class OrderController extends Controller
             ]);
         }
 
+        // Kurangi stok sesuai jumlah yang dipesan
+        foreach ($order->orderItems as $item) {
+            Produk::where('id', $item->produk_id)->decrement('stok', $item->jumlah);
+        }
+
         $order->orderItems()->delete();
         $order->delete();
 
@@ -278,25 +299,34 @@ class OrderController extends Controller
      */
     public function selectPayment($id)
     {
-        $pesanan = Pesanan::with('detailPesanan')->findOrFail($id);
+        $pesanan = Pesanan::with('detailPesanan')
+            ->where('user_id', Auth::id())
+            ->findOrFail($id);
 
-        // Kalau token sudah pernah dibuat sebelumnya, pakai lagi
-        if ($pesanan->snap_token) {
+        // Sudah dibayar / diproses / dibatalkan -> jangan bikin token baru
+        if ($pesanan->status !== 'Menunggu Pembayaran') {
+            return redirect()->route('customer.checkout.selesai', $pesanan->id);
+        }
+
+        // Token sudah ada (dan punya order_id Midtrans-nya) -> pakai lagi
+        if ($pesanan->snap_token && $pesanan->midtrans_order_id) {
             return view('customer.checkout.pembayaran', [
                 'pesanan'   => $pesanan,
                 'snapToken' => $pesanan->snap_token,
             ]);
         }
 
-        // Konfigurasi Midtrans
         Config::$serverKey    = config('midtrans.server_key');
         Config::$isProduction = config('midtrans.is_production');
         Config::$isSanitized  = true;
         Config::$is3ds        = true;
 
+        // order_id unik tiap kali token dibuat (Midtrans mengunci order_id begitu token terbentuk)
+        $midtransOrderId = $pesanan->kode_pesanan . '-' . time();
+
         $params = [
             'transaction_details' => [
-                'order_id'     => $pesanan->kode_pesanan,
+                'order_id'     => $midtransOrderId,
                 'gross_amount' => (int) $pesanan->total_harga,
             ],
             'customer_details' => [
@@ -304,14 +334,14 @@ class OrderController extends Controller
                 'email'      => Auth::user()->email,
             ],
             'callbacks' => [
-                'finish' => route('customer.checkout.selesai', $pesanan->id),
+                'finish' => route('customer.checkout.selesaiMidtrans'),
             ],
         ];
 
         $snapToken = Snap::getSnapToken($params);
 
-        // Simpan token supaya tidak generate ulang di kunjungan berikutnya
-        $pesanan->snap_token = $snapToken;
+        $pesanan->snap_token        = $snapToken;
+        $pesanan->midtrans_order_id = $midtransOrderId;
         $pesanan->save();
 
         return view('customer.checkout.pembayaran', [
@@ -331,19 +361,60 @@ class OrderController extends Controller
         $hashed = hash('sha512', $request->order_id . $request->status_code . $request->gross_amount . $serverKey);
 
         if ($hashed == $request->signature_key) {
-            $pesanan = Pesanan::where('kode_pesanan', $request->order_id)->first();
+            $pesanan = Pesanan::where('midtrans_order_id', $request->order_id)->orWhere('kode_pesanan', $request->order_id)->first();
 
-            if ($pesanan) {
+            if ($pesanan && in_array($pesanan->status, ['Menunggu Pembayaran', 'Paid'])) {
                 if ($request->transaction_status == 'settlement' || $request->transaction_status == 'capture') {
-                    $pesanan->update(['status' => 'Paid']);
+                    $pesanan->update(['status' => 'Proses']);
                 } elseif ($request->transaction_status == 'expire') {
-                    $pesanan->update(['status' => 'Kadaluarsa']);
+                    $pesanan->update(['status' => 'Kadaluarsa']); $this->kembalikanStok($pesanan);
                 } elseif ($request->transaction_status == 'cancel' || $request->transaction_status == 'deny') {
-                    $pesanan->update(['status' => 'Dibatalkan']);
+                    $pesanan->update(['status' => 'Dibatalkan']); $this->kembalikanStok($pesanan);
                 }
             }
         }
 
         return response()->json(['message' => 'OK']);
+    }
+
+    /**
+     * Dipanggil saat customer kembali dari Midtrans. Status dicek langsung ke API Midtrans
+     * lalu pesanan diubah ke "Proses" kalau pembayaran sukses.
+     */
+    public function selesaiMidtrans(Request $request)
+    {
+        $orderId = $request->query('order_id');
+
+        $pesanan = Pesanan::where('user_id', Auth::id())
+            ->where(function ($q) use ($orderId) {
+                $q->where('midtrans_order_id', $orderId)
+                  ->orWhere('kode_pesanan', $orderId);
+            })
+            ->firstOrFail();
+
+        $idMidtrans = $pesanan->midtrans_order_id ?: $pesanan->kode_pesanan;
+
+        Config::$serverKey    = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+
+        try {
+            $status = \Midtrans\Transaction::status($idMidtrans);
+            $trx    = $status->transaction_status ?? null;
+            $fraud  = $status->fraud_status ?? null;
+
+            if (in_array($pesanan->status, ['Menunggu Pembayaran', 'Paid'])) {
+                if ($trx === 'settlement' || ($trx === 'capture' && $fraud !== 'challenge')) {
+                    $pesanan->update(['status' => 'Proses']);
+                } elseif ($trx === 'expire') {
+                    $pesanan->update(['status' => 'Kadaluarsa']); $this->kembalikanStok($pesanan);
+                } elseif ($trx === 'cancel' || $trx === 'deny') {
+                    $pesanan->update(['status' => 'Dibatalkan']); $this->kembalikanStok($pesanan);
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Gagal cek status Midtrans untuk ' . $idMidtrans . ': ' . $e->getMessage());
+        }
+
+        return redirect()->route('customer.checkout.selesai', $pesanan->id);
     }
 }

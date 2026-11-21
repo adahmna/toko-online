@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ChatMessage;
+use App\Models\Pesanan;
 use App\Models\Produk;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -40,7 +41,53 @@ class LiveChatController extends Controller
     private const STATES_TABLE   = 'chat_conversation_states';
     private const SNAPSHOT_TABLE = 'chat_customer_snapshots';
     private const MAX_PINNED     = 3;
-    private const AUTO_NAME      = 'BSI Cyber Store';
+    private const FAQ_KEYS = [
+        'Kapan pesanan saya akan dikirim?'       => 'kirim',
+        'Di mana pesanan saya?'                  => 'lacak',
+        'Lacak pesanan'                          => 'lacak',
+        'Bisakah saya mengubah alamat pesanan?'  => 'alamat',
+        'Ubah alamat'                            => 'alamat',
+        'Bisakah saya membatalkan pesanan saya?' => 'batal',
+        'Bagaimana cara mengembalikan produk?'   => 'retur',
+        'Minta pengembalian dana'                => 'retur',
+    ];
+    private const GENERAL_FAQ_KEYS = [
+        'Bagaimana cara memesan produk?'         => 'cara_pesan',
+        'Berapa lama pengiriman barang?'         => 'lama_kirim',
+        'Ekspedisi apa saja yang tersedia?'      => 'ekspedisi',
+        'Metode pembayaran apa saja?'            => 'bayar',
+        'Apakah produk masih tersedia?'          => 'stok',
+        'Bagaimana jika barang rusak atau tidak sesuai?' => 'rusak',
+    ];
+    // SESUAIKAN isi jawaban di bawah dengan kebijakan toko kamu
+    private const GENERAL_FAQ_ANSWERS = [
+        'cara_pesan' => [
+            "Cara memesan produk:\n1. Pilih produk lalu masukkan ke keranjang.\n2. Buka keranjang dan lanjut ke checkout.\n3. Isi alamat pengiriman dan pilih ekspedisi.\n4. Selesaikan pembayaran.\nSetelah pembayaran masuk, pesanan kami proses dan kirim.",
+        ],
+        'lama_kirim' => [
+            'Pesanan diproses pada jam operasional 07:00 - 22:00 WIB. Pesanan yang masuk di luar jam operasional dikirim keesokan harinya.',
+            'Lama perjalanan paket tergantung ekspedisi dan kota tujuan. Perkiraannya tampil saat Anda memilih ekspedisi di halaman checkout, dan nomor resi muncul di riwayat belanja setelah paket dikirim.',
+        ],
+        'ekspedisi' => [
+            'Pilihan ekspedisi dan jenis layanannya tampil di halaman checkout setelah alamat pengiriman diisi, lengkap dengan ongkos kirimnya.',
+        ],
+        'bayar' => [
+            'Pembayaran dilakukan di halaman checkout lewat Midtrans, dengan metode yang tersedia saat itu (misalnya transfer bank / virtual account dan e-wallet).',
+            'Pesanan harus dibayar sebelum batas waktu pembayaran. Jika terlewat, pesanan otomatis kedaluwarsa dan Anda perlu membuat pesanan baru.',
+        ],
+        'stok' => [
+            'Stok dan detail produk bisa dilihat di halaman produknya. Untuk produk tertentu, kirim produknya lewat tombol tas belanja di chat ini dan tulis pertanyaan Anda, admin akan membantu mengecek.',
+        ],
+        'rusak' => [
+            'Jika barang yang diterima rusak atau tidak sesuai, simpan kemasannya dan foto atau video barang. Setelah Anda memiliki pesanan, pengajuan pengembalian dana bisa dilakukan lewat chat ini.',
+        ],
+    ];
+    private const WELCOME_HOURS = 12;
+    private const WELCOME_TEXT  = 'Terima kasih telah menghubungi kami. Apa yang bisa saya bantu hari ini?';
+    private const FAQ_TITLE     = 'Ada yang bisa kami bantu hari ini?';
+    private const ORDER_TEXT  = 'Terima kasih atas pesanan Anda! Harap konfirmasi bahwa alamat pengiriman sudah benar.';
+    private const THANKS_TEXT = 'Terima kasih telah mengonfirmasi alamat Anda.';
+private const AUTO_NAME      = 'BSI Cyber Store';
     private const DELETED_NAME   = 'Customer ini sudah tidak aktif (dihapus)';
     private const FROZEN_MESSAGE = 'Akun Anda sudah dibekukan, sehingga tidak dapat menghubungi admin. Silakan hubungi pihak toko untuk informasi lebih lanjut.';
     private const AUTO_TEXT      = 'Halo! Saat ini admin sedang offline. Jadwal operasional kami 07:00 - 22:00 WIB. '
@@ -147,6 +194,447 @@ class LiveChatController extends Controller
             'frozen'         => true,
             'frozen_message' => self::FROZEN_MESSAGE,
         ], 403);
+    }
+
+    // pembatalan pesanan dari kartu chat. Hanya untuk pesanan yang BELUM dibayar.
+    public function customerCancelOrder(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+        if (!Auth::check()) {
+            return response()->json(['message' => 'Silakan login terlebih dahulu.'], 401);
+        }
+
+        $msg = ChatMessage::where('id', $id)
+            ->where('type', 'order_cancel')
+            ->where('customer_id', Auth::id())
+            ->first();
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+
+        $o = Pesanan::where('id', $msg->pesanan_id)->where('user_id', Auth::id())->first();
+        if (!$o) {
+            return response()->json(['message' => 'Pesanan tidak ditemukan.'], 404);
+        }
+
+        if ($this->orderPhase($o) !== 'unpaid') {
+            return response()->json(['message' => 'Pesanan ini tidak bisa dibatalkan otomatis. Silakan hubungi admin lewat chat.'], 422);
+        }
+
+        // batalkan transaksi di Midtrans (kalau sudah dibuat) supaya tidak bisa dibayar setelah dibatalkan
+        try {
+            \Midtrans\Config::$serverKey    = config('midtrans.server_key');
+            \Midtrans\Config::$isProduction = config('midtrans.is_production');
+            \Midtrans\Transaction::cancel($o->kode_pesanan);
+        } catch (\Throwable $e) {
+            // transaksi belum dibuat di Midtrans / sudah tidak aktif: abaikan
+        }
+
+        // update bersyarat: hanya kalau status belum berubah sejak dibaca
+        $updated = Pesanan::where('id', $o->id)->where('status', $o->status)->update(['status' => 'Dibatalkan']);
+        if (!$updated) {
+            return response()->json(['message' => 'Status pesanan baru saja berubah. Muat ulang lalu coba lagi.'], 409);
+        }
+
+        $bot = new ChatMessage();
+        $bot->forceFill([
+            'customer_id'  => $msg->customer_id,
+            'guest_id'     => null,
+            'sender'       => 'admin',
+            'admin_id'     => null,
+            'message'      => 'Pesanan ' . ($o->kode_pesanan ?: ('#' . $o->id)) . ' berhasil dibatalkan.',
+            'type'         => 'bot_reply',
+            'is_read'      => 0,
+            'hidden_admin' => true,
+        ])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
+    // pertanyaan FAQ / chip yang dikenali bot (teks harus persis sama dengan yang di livechat.js)
+    private function faqKey(Request $request, string $role, int $conv, string $text): ?string
+    {
+        if ($role !== 'customer' || $conv <= 0 || $text === '') {
+            return null;
+        }
+        if ($request->hasFile('file') || $request->filled('product_id') || $request->filled('reply_to_id')) {
+            return null;
+        }
+        return self::FAQ_KEYS[$text] ?? self::GENERAL_FAQ_KEYS[$text] ?? null;
+    }
+
+    // fase pesanan, dibaca dari kolom status/no_resi. Status yang tidak dikenal dianggap 'processing'.
+    private function orderPhase($o): string
+    {
+        $s = strtolower(trim((string) $o->status));
+        if (preg_match('/batal|cancel|gagal|expire|kedaluwarsa|kadaluarsa|kadaluwarsa/', $s)) {
+            return 'cancelled';
+        }
+        if (preg_match('/selesai|diterima|complete/', $s)) {
+            return 'done';
+        }
+        if (preg_match('/^(menunggu[ _]?pembayaran|belum[ _]?dibayar|pending|unpaid)/', $s)) {
+            return $o->sudah_expired ? 'expired' : 'unpaid';
+        }
+        if (!empty($o->no_resi) || preg_match('/kirim|shipp/', $s)) {
+            return 'shipped';
+        }
+        return 'processing';
+    }
+
+    private function faqReply(int $conv, string $key): void
+    {
+        $hide = false; // retur & ubah alamat diteruskan ke admin, sisanya tersembunyi dari admin
+
+        $make = function (string $type, string $text, $pesananId = null) use ($conv, $hide) {
+            $m = new ChatMessage();
+            $m->forceFill([
+                'customer_id'  => $conv,
+                'guest_id'     => null,
+                'sender'       => 'admin',
+                'admin_id'     => null, // pesan bot
+                'message'      => $text,
+                'type'         => $type,
+                'pesanan_id'   => $pesananId,
+                'is_read'      => 0,
+                'hidden_admin' => $hide,
+            ])->save();
+        };
+
+        if (isset(self::GENERAL_FAQ_ANSWERS[$key])) {
+            foreach (self::GENERAL_FAQ_ANSWERS[$key] as $t) {
+                $make('bot_reply', $t);
+            }
+            return;
+        }
+
+        if ($key === 'retur') {
+            $o = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+            if (!$o) {
+                $make('bot_reply', 'Anda belum memiliki pesanan, jadi belum ada dana yang bisa dikembalikan. Silakan pilih produk di toko kami terlebih dahulu.');
+                return;
+            }
+
+            $kode  = $o->kode_pesanan ?: ('#' . $o->id);
+            $phase = $this->orderPhase($o);
+
+            $make('bot_reply', 'Baik, kami bantu pengajuan pengembalian dana. Berikut pesanan terakhir Anda:');
+            $make('order_summary', '', $o->id);
+
+            $alasan = "Pilih alasan pengembalian (ketik nomornya atau jelaskan dengan kata-kata Anda):\n"
+                . "1. Barang rusak / cacat\n"
+                . "2. Barang tidak sesuai pesanan\n"
+                . "3. Barang kurang / tidak lengkap\n"
+                . "4. Paket belum diterima\n"
+                . "5. Alasan lainnya";
+
+            $bukti = "Agar pengajuan cepat diproses, kirim juga:\n"
+                . "- Foto atau video barang (termasuk kemasan dan label paket)\n"
+                . "- Penjelasan singkat kondisi barang\n"
+                . "Gunakan tombol lampiran (ikon klip) di chat ini untuk mengirim foto atau video.";
+
+            $lanjut = 'Setelah bukti kami terima, admin akan meninjau pengajuan Anda dan memberi kabar lewat chat ini. '
+                . 'Jika disetujui, dana dikembalikan ke metode pembayaran yang Anda gunakan.';
+
+            switch ($phase) {
+                case 'unpaid':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' belum dibayar, jadi tidak ada dana yang perlu dikembalikan. Jika Anda tidak ingin melanjutkan pesanan ini, Anda bisa membatalkannya di bawah.');
+                    $make('order_cancel', '', $o->id);
+                    break;
+
+                case 'expired':
+                case 'cancelled':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah dibatalkan atau melewati batas pembayaran. Jika Anda sempat membayar dan dana belum kembali, ketik kendala Anda beserta bukti pembayaran di chat ini, admin akan membantu memeriksanya.');
+                    break;
+
+                case 'processing':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah dibayar dan sedang kami proses, belum dikirim. Pesanan ini masih bisa dibatalkan, dan dana dikembalikan ke metode pembayaran Anda.');
+                    $make('bot_reply', 'Silakan ketik alasan pembatalan di chat ini, admin akan memprosesnya.');
+                    break;
+
+                case 'shipped':
+                    $make('bot_reply', 'Pesanan ' . $kode . ' masih dalam pengiriman. Pengembalian dana bisa diajukan jika paket tidak kunjung sampai, atau barang rusak / tidak sesuai setelah diterima.');
+                    $make('bot_reply', $alasan);
+                    $make('bot_reply', $bukti);
+                    $make('bot_reply', $lanjut);
+                    break;
+
+                default: // done
+                    $make('bot_reply', 'Pesanan ' . $kode . ' sudah selesai. Anda masih bisa mengajukan pengembalian dana jika ada kendala pada barang yang diterima.');
+                    $make('bot_reply', $alasan);
+                    $make('bot_reply', $bukti);
+                    $make('bot_reply', $lanjut);
+            }
+
+            $make('bot_reply', 'Untuk pesanan lain, ketik kode pesanannya di chat ini.');
+            return;
+        }
+
+        $o = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+        if (!$o) {
+            $make('bot_reply', 'Anda belum memiliki pesanan. Silakan pilih produk di toko kami terlebih dahulu.');
+            return;
+        }
+
+        $kode  = $o->kode_pesanan ?: ('#' . $o->id);
+        $base  = 'Pesanan ' . $kode;
+        $phase = $this->orderPhase($o);
+        $kurir = trim(($o->ekspedisi ?? '') . ' ' . ($o->layanan_ekspedisi ?? ''));
+        $resi  = trim((string) ($o->no_resi ?? ''));
+
+        if ($key === 'kirim' || $key === 'lacak') {
+            switch ($phase) {
+                case 'unpaid':
+                    $t = $base . ' belum dibayar, jadi belum bisa kami proses dan kirim.';
+                    $t .= $o->batas_pembayaran
+                        ? ' Silakan selesaikan pembayaran sebelum ' . $o->batas_pembayaran->format('d M Y, H:i') . '.'
+                        : ' Silakan selesaikan pembayaran terlebih dahulu.';
+                    $make('bot_reply', $t);
+                    break;
+                case 'expired':
+                    $make('bot_reply', $base . ' melewati batas pembayaran sehingga tidak dapat diproses. Silakan buat pesanan baru.');
+                    break;
+                case 'cancelled':
+                    $make('bot_reply', $base . ' sudah dibatalkan, jadi tidak ada pengiriman untuk pesanan ini.');
+                    break;
+                case 'done':
+                    $make('bot_reply', $base . ' sudah selesai. Terima kasih sudah berbelanja di toko kami!');
+                    break;
+                case 'shipped':
+                    $t = $base . ' sudah dikirim' . ($kurir !== '' ? ' melalui ' . $kurir : '') . '.';
+                    $t .= $resi !== '' ? ' Nomor resi: ' . $resi . '.' : ' Nomor resi akan segera diperbarui.';
+                    $make('bot_reply', $t);
+                    break;
+                default:
+                    $make('bot_reply', $base . ' sedang kami proses dan belum dikirim. Nomor resi akan muncul di riwayat belanja setelah paket dikirim.');
+                    if ($key === 'kirim') {
+                        $make('bot_reply', 'Jadwal operasional kami 07:00 - 22:00 WIB. Pesanan yang masuk di luar jam operasional akan dikirim keesokan harinya.');
+                    }
+            }
+            return;
+        }
+
+        if ($key === 'alamat') {
+            if ($phase === 'unpaid' || $phase === 'processing') {
+                $make('bot_reply', 'Alamat pengiriman ' . $base . " saat ini:\n" . ($o->alamat ?: '-'));
+                $make('bot_reply', 'Alamat masih bisa diubah selama pesanan belum dikirim. Silakan ketik alamat baru Anda selengkapnya di chat ini, admin akan membantu mengubahnya.');
+            } elseif ($phase === 'shipped' || $phase === 'done') {
+                $make('bot_reply', $base . ' sudah dikirim atau selesai, sehingga alamat tidak bisa diubah lagi.');
+            } else {
+                $make('bot_reply', $base . ' sudah tidak aktif, jadi tidak ada alamat yang perlu diubah.');
+            }
+            return;
+        }
+
+        if ($key === 'batal') {
+            if ($phase === 'unpaid') {
+                $make('bot_reply', $base . ' belum dibayar dan masih bisa dibatalkan.');
+                $make('order_cancel', '', $o->id);
+            } elseif ($phase === 'processing') {
+                $make('bot_reply', $base . ' masih bisa dibatalkan selama belum dikirim. Jika pembayaran sudah masuk, pengembaliannya akan diproses oleh admin.');
+                $make('order_cancel', '', $o->id);
+            } elseif ($phase === 'shipped') {
+                $make('bot_reply', $base . ' sudah dalam pengiriman sehingga tidak bisa dibatalkan langsung. Jika ada kendala, ketik masalah Anda di chat ini dan admin akan membantu.');
+            } elseif ($phase === 'done') {
+                $make('bot_reply', $base . ' sudah selesai, jadi tidak bisa dibatalkan. Untuk pengembalian produk, pilih "Bagaimana cara mengembalikan produk?".');
+            } else {
+                $make('bot_reply', $base . ' sudah dibatalkan atau tidak aktif.');
+            }
+        }
+    }
+
+    // sapaan bot saat customer membuka chat: sapaan + ringkasan pesanan terakhir + FAQ.
+    // Disimpan sebagai pesan yang tersembunyi dari admin (hidden_admin) supaya tidak jadi percakapan kosong.
+    private function maybeWelcome(int $conv): void
+    {
+        if ($this->isBlocked($conv) || $this->isDeletedConv($conv)) {
+            return;
+        }
+
+        // cegah dobel kalau dua polling datang bersamaan
+        if (!Cache::add('livechat_welcome_' . $conv, 1, now()->addSeconds(10))) {
+            return;
+        }
+
+        $recent = ChatMessage::where('customer_id', $conv)
+            ->where('type', 'bot_text')
+            ->where('created_at', '>=', now()->subHours(self::WELCOME_HOURS))
+            ->exists();
+        if ($recent) {
+            return;
+        }
+
+        $make = function (array $extra) use ($conv) {
+            $m = new ChatMessage();
+            $m->forceFill(array_merge([
+                'customer_id'  => $conv,
+                'guest_id'     => null,
+                'sender'       => 'admin',
+                'admin_id'     => null,
+                'is_read'      => 0,
+                'hidden_admin' => true,
+            ], $extra))->save();
+        };
+
+        $make(['type' => 'bot_text', 'message' => self::WELCOME_TEXT]);
+
+        $order = $this->activeOrder($conv);
+        if ($order) {
+            $make(['type' => 'order_summary', 'message' => '', 'pesanan_id' => $order->id]);
+        }
+
+        $make(['type' => 'bot_faq', 'message' => self::FAQ_TITLE]);
+    }
+
+    // pesanan yang belum selesai / dibatalkan / kedaluwarsa (null kalau tidak ada)
+    private function activeOrder(int $conv)
+    {
+        if ($conv <= 0) {
+            return null;
+        }
+        $orders = Pesanan::where('user_id', $conv)->orderByDesc('id')->limit(20)->get();
+        foreach ($orders as $o) {
+            if (!in_array($this->orderPhase($o), ['done', 'cancelled', 'expired'], true)) {
+                return $o;
+            }
+        }
+        return null;
+    }
+
+    // pesanan terakhir sudah selesai/dibatalkan: chat customer dikembalikan ke awal (sekali per pesanan)
+    private function maybeResetAfterOrder(int $conv): bool
+    {
+        if ($conv <= 0 || $this->activeOrder($conv) !== null) {
+            return false;
+        }
+        $last = Pesanan::where('user_id', $conv)->orderByDesc('id')->first();
+        if (!$last) {
+            return false;
+        }
+        if (!Cache::add('livechat_reset_' . $conv . '_' . $last->id, 1, now()->addYears(1))) {
+            return false;
+        }
+
+        $this->inConv(ChatMessage::query(), $conv)->update(['hidden_customer' => true]);
+        $this->inConv(ChatMessage::query(), $conv)
+            ->where('type', 'bot_text')
+            ->where('hidden_admin', true)
+            ->delete();
+        Cache::forget('livechat_welcome_' . $conv);
+
+        return true;
+    }
+
+    private function statusLabel($s): string
+    {
+        $map = [
+            'menunggupembayaran' => 'Menunggu pembayaran',
+            'menunggu pembayaran' => 'Menunggu pembayaran',
+            'paid'               => 'Sudah dibayar',
+            'kadaluarsa'         => 'Kedaluwarsa',
+            'dibayar'            => 'Sudah dibayar',
+            'diproses'           => 'Sedang diproses',
+            'dikemas'            => 'Sedang dikemas',
+            'dikirim'            => 'Dalam pengiriman',
+            'selesai'            => 'Selesai',
+            'dibatalkan'         => 'Dibatalkan',
+            'expired'            => 'Kedaluwarsa',
+        ];
+        $k = strtolower(trim((string) $s));
+        return $map[$k] ?? ucfirst(str_replace('_', ' ', $k));
+    }
+
+    // dipanggil dari checkout setelah pesanan tersimpan
+    public static function notifyOrder($pesanan): void
+    {
+        $userId = (int) ($pesanan->user_id ?? $pesanan->customer_id ?? 0);
+        if ($userId <= 0) {
+            return;
+        }
+
+        $exists = ChatMessage::where('type', 'order_confirm')
+            ->where('pesanan_id', $pesanan->id)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        $msg = new ChatMessage();
+        $msg->forceFill([
+            'customer_id' => $userId,
+            'guest_id'    => null,
+            'sender'      => 'admin',
+            'admin_id'    => null, // pesan otomatis
+            'message'     => self::ORDER_TEXT,
+            'type'        => 'order_confirm',
+            'pesanan_id'  => $pesanan->id,
+            'is_read'     => 0,
+        ])->save();
+    }
+
+    public function customerConfirmAddress(Request $request, $id): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+        if (!Auth::check()) {
+            return response()->json(['message' => 'Silakan login terlebih dahulu.'], 401);
+        }
+
+        $msg = ChatMessage::where('id', $id)
+            ->where('type', 'order_confirm')
+            ->where('customer_id', Auth::id())
+            ->first();
+
+        if (!$msg) {
+            return response()->json(['message' => 'Pesan tidak ditemukan.'], 404);
+        }
+
+        // update bersyarat: kalau diklik dobel, balasan hanya terbuat sekali
+        $updated = ChatMessage::where('id', $msg->id)
+            ->whereNull('address_confirmed_at')
+            ->update(['address_confirmed_at' => now()]);
+
+        if ($updated) {
+            $thanks = new ChatMessage();
+            $thanks->forceFill([
+                'customer_id' => $msg->customer_id,
+                'guest_id'    => null,
+                'sender'      => 'admin',
+                'admin_id'    => null,
+                'message'     => self::THANKS_TEXT,
+                'type'        => 'text',
+                'is_read'     => 0,
+            ])->save();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+// customer menghapus chat dari tampilannya sendiri (admin tetap melihat chat-nya)
+    public function customerClear(Request $request): JsonResponse
+    {
+        if ($this->frozenAccount($request)) {
+            return $this->frozenResponse();
+        }
+
+        $conv = $this->customerConv($request, false);
+        if ($conv === null) {
+            return response()->json(['ok' => true]);
+        }
+
+        $this->inConv(ChatMessage::query(), $conv)->update(['hidden_customer' => true]);
+
+        // hapus sapaan bot (tidak terlihat admin) supaya sapaan + FAQ muncul lagi saat widget dibuka
+        $this->inConv(ChatMessage::query(), $conv)
+            ->where('type', 'bot_text')
+            ->where('hidden_admin', true)
+            ->delete();
+        Cache::forget('livechat_welcome_' . $conv);
+
+        return response()->json(['ok' => true]);
     }
 
     public function customerFlag(Request $request, $id): JsonResponse
@@ -623,6 +1111,11 @@ class LiveChatController extends Controller
         $other = $role === 'admin' ? 'customer' : 'admin';
         $open  = $role === 'admin' ? true : $request->boolean('open');
 
+        $didReset = ($role === 'customer') ? $this->maybeResetAfterOrder($conv) : false;
+        if ($role === 'customer' && $open && $conv > 0) {
+            $this->maybeWelcome($conv);
+        }
+
         if ($request->boolean('typing')) {
             Cache::put($this->typingKey($conv, $role), true, now()->addSeconds(self::TYPING_SECONDS));
         }
@@ -665,7 +1158,8 @@ class LiveChatController extends Controller
             'admin'    => $this->adminStatus($conv, $role),
             'typing'   => Cache::has($this->typingKey($conv, $other)),
             'blocked'  => $this->isBlocked($conv),
-            'deleted'  => $role === 'admin' && $this->isDeletedConv($conv),
+            'deleted'  => $role === 'admin' && $this->isDeletedConv($conv), 'has_order' => $role === 'customer' && $conv > 0 && $this->activeOrder($conv) !== null,
+            'reset' => $didReset,
         ]);
     }
 
@@ -758,6 +1252,11 @@ class LiveChatController extends Controller
         }
 
         $msg = new ChatMessage();
+        $faq = $this->faqKey($request, $role, $conv, $text);
+        if ($faq && !in_array($faq, ['retur', 'alamat'], true)) {
+            // pertanyaan FAQ customer tetap terlihat admin
+        }
+
         $msg->forceFill($data)->save();
 
         Cache::forget($this->typingKey($conv, $role));
@@ -767,7 +1266,14 @@ class LiveChatController extends Controller
             DB::table(self::STATES_TABLE)->where('conv_id', $conv)->whereNotNull('archived_at')
                 ->update(['archived_at' => null, 'updated_at' => now()]);
 
-            $this->autoReply($conv);
+            if ($faq) {
+                $this->faqReply($conv, $faq);
+                if (in_array($faq, ['retur', 'alamat'], true)) {
+                    $this->autoReply($conv); // pemberitahuan admin offline tetap perlu untuk yang diteruskan ke admin
+                }
+            } else {
+                $this->autoReply($conv);
+            }
         }
 
         return response()->json(['message' => $this->formatMany([$msg])[0]]);
@@ -903,7 +1409,7 @@ class LiveChatController extends Controller
         return [
             'online'      => $seen ? $ago <= self::ONLINE_SECONDS : false,
             'seconds_ago' => $ago,
-            'name'        => $name,
+            'name'        => self::AUTO_NAME,
         ];
     }
 
@@ -942,6 +1448,7 @@ class LiveChatController extends Controller
             'deleted'      => $deleted,
             'delivered_at' => $this->iso($m->delivered_at),
             'read_at'      => $this->iso($m->read_at),
+            'address_confirmed' => !is_null($m->address_confirmed_at),
         ];
     }
 
@@ -958,6 +1465,10 @@ class LiveChatController extends Controller
             case 'file':    return 'Dokumen';
             case 'sticker': return 'Stiker';
             case 'product': return 'Produk';
+            case 'order_confirm': return 'Konfirmasi pesanan';
+            case 'order_summary': return 'Ringkasan pesanan';
+            case 'bot_faq':       return 'Bantuan';
+            case 'order_cancel':  return 'Pembatalan pesanan';
             default:        return (string) $m->message;
         }
     }
@@ -1045,7 +1556,34 @@ class LiveChatController extends Controller
         return asset('storage/' . $raw);
     }
 
-    /* ---------- format JSON ---------- */
+    private function orderCard($o): array
+    {
+        $details = $o->details ?? collect();
+        $first   = $details->first();
+        $prod    = $first->produk ?? null;
+
+        $name = $first ? (string) ($prod->nama_produk ?? $first->nama_produk ?? 'Produk') : 'Pesanan';
+        if ($details->count() > 1) {
+            $name .= ' +' . ($details->count() - 1) . ' lainnya';
+        }
+
+        $qty = (int) $details->sum(fn ($d) => (int) ($d->qty ?? $d->jumlah ?? $d->quantity ?? 1));
+        $u   = $o->user;
+
+        return [
+            'id'      => (int) $o->id,
+            'status'  => $this->statusLabel($o->status ?? ''),
+            'phase'   => $this->orderPhase($o),
+            'code'    => (string) ($o->kode_pesanan ?: ('#' . $o->id)),
+            'product' => $name,
+            'image'   => $prod ? $this->productImage($prod) : null,
+            'items'   => max($qty, $details->count()),
+            'total'   => (int) round((float) $o->total_harga),
+            'phone'   => (string) ($u->hp ?? $u->no_hp ?? $u->phone ?? $u->telepon ?? ''),
+            'address' => (string) ($o->alamat ?: ($u->alamat ?? '')),
+        ];
+    }
+/* ---------- format JSON ---------- */
 
     private function formatMany($messages): array
     {
@@ -1070,7 +1608,12 @@ class LiveChatController extends Controller
             ? Produk::whereIn('id', $productIds)->get()->keyBy('id')
             : collect();
 
-        return $messages->map(fn ($m) => $this->shape($m, $admins, $replies, $products))->values()->all();
+        $orderIds = $messages->whereIn('type', ['order_confirm', 'order_summary', 'order_cancel'])->pluck('pesanan_id')->filter()->unique();
+        $orders   = $orderIds->isNotEmpty()
+            ? Pesanan::with('details.produk')->whereIn('id', $orderIds)->get()->keyBy('id')
+            : collect();
+
+        return $messages->map(fn ($m) => $this->shape($m, $admins, $replies, $products, $orders))->values()->all();
     }
 
     private function adminLabel($adminId, $admins): string
@@ -1081,7 +1624,7 @@ class LiveChatController extends Controller
         return $this->userName($admins->get($adminId)) ?? 'Admin';
     }
 
-    private function shape(ChatMessage $m, $admins, $replies, $products): array
+    private function shape(ChatMessage $m, $admins, $replies, $products, $orders): array
     {
         $deleted   = !is_null($m->deleted_everyone_at);
         $adminName = $m->sender === 'admin' ? $this->adminLabel($m->admin_id, $admins) : null;
@@ -1103,7 +1646,13 @@ class LiveChatController extends Controller
             $product = $p ? $this->productCard($p) : ['missing' => true];
         }
 
-        $reply = null;
+        $order = null;
+        if (!$deleted && in_array($m->type, ['order_confirm', 'order_summary', 'order_cancel'], true)) {
+            $o     = $orders->get($m->pesanan_id);
+            $order = $o ? $this->orderCard($o) : ['missing' => true];
+        }
+
+$reply = null;
         if (!$deleted && $m->reply_to_id && ($r = $replies->get($m->reply_to_id))) {
             $rDeleted = !is_null($r->deleted_everyone_at);
             $reply = [
@@ -1118,12 +1667,124 @@ class LiveChatController extends Controller
         return array_merge($this->stateOf($m), [
             'id'         => $m->id,
             'sender'     => $m->sender,
-            'admin_name' => $adminName,
+            'admin_name' => $adminName, 'is_bot' => ($m->sender === 'admin' && empty($m->admin_id)),
             'type'       => $m->type ?: 'text',
             'attachment' => $attachment,
             'product'    => $product,
+            'order'      => $order,
             'reply'      => $reply,
             'created_at' => $this->iso($m->created_at),
         ]);
+    }
+
+    /* ---------- info kontak (panel di halaman admin) ---------- */
+
+    public function adminCustomerInfo($customer): JsonResponse
+    {
+        $conv = (int) $customer;
+        if ($conv === 0) {
+            return response()->json(['message' => 'Percakapan tidak valid.'], 422);
+        }
+
+        $state = DB::table(self::STATES_TABLE)->where('conv_id', $conv)->first();
+
+        $common = [
+            'conv_id'        => $conv,
+            'first_chat'     => $this->iso($this->inConv(ChatMessage::where('hidden_admin', false), $conv)->min('created_at')),
+            'total_messages' => $this->inConv(ChatMessage::where('hidden_admin', false), $conv)->count(),
+            'blocked'        => (bool) ($state && $state->blocked_at),
+            'blocked_reason' => $state->blocked_reason ?? null,
+        ];
+
+        // tamu (id negatif)
+        if ($conv < 0) {
+            $g = DB::table('chat_guests')->where('id', -$conv)->first();
+
+            return response()->json($common + [
+                'type' => 'guest',
+                'name' => 'Tamu – ' . ($g->nama ?? 'Tamu'),
+            ]);
+        }
+
+        $u = User::find($conv);
+
+        // akun customer sudah dihapus
+        if (!$u) {
+            $snap = DB::table(self::SNAPSHOT_TABLE)->where('conv_id', $conv)->first();
+
+            return response()->json($common + [
+                'type'  => 'deleted',
+                'name'  => $this->deletedLabel($snap),
+                'email' => $snap->email ?? null,
+            ]);
+        }
+
+        // customer terdaftar
+        $orders = $this->orderStats((int) $u->id);
+
+        return response()->json($common + [
+            'type'         => 'customer',
+            'name'         => $this->userName($u) ?? 'Customer',
+            'email'        => $u->email ?? null,
+            'phone'        => $u->hp ?? $u->no_hp ?? $u->phone ?? $u->telepon ?? null,
+            'address'      => $u->alamat ?? $u->address ?? null,
+            'photo'        => $this->userPhoto($u),
+            'joined'       => $this->iso($u->created_at),
+            'total_orders' => $orders['count'],
+            'last_order'   => $orders['last'],
+        ]);
+    }
+
+    // foto profil user: cek storage/app/public lalu public/
+    private function userPhoto($u): ?string
+    {
+        $raw = $u->foto ?? $u->photo ?? $u->avatar ?? $u->gambar ?? null;
+        if (!$raw) {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+
+        $raw = preg_replace('#^(public/|storage/)#', '', ltrim($raw, '/'));
+
+        if (is_file(storage_path('app/public/' . $raw))) {
+            return asset('storage/' . $raw);
+        }
+        if (is_file(public_path($raw))) {
+            return asset($raw);
+        }
+        foreach (glob(public_path('*/' . $raw)) ?: [] as $hit) {
+            return asset(substr(str_replace('\\', '/', $hit), strlen(str_replace('\\', '/', public_path())) + 1));
+        }
+
+        return null;
+    }
+
+    // jumlah & tanggal pesanan terakhir; otomatis mencari tabel pesanan yang ada
+    private function orderStats(int $userId): array
+    {
+        $out = ['count' => 0, 'last' => null];
+
+        try {
+            foreach (['orders', 'order', 'pesanan', 'transaksi', 'transactions'] as $table) {
+                if (!Schema::hasTable($table)) {
+                    continue;
+                }
+                foreach (['user_id', 'customer_id', 'id_user'] as $col) {
+                    if (!Schema::hasColumn($table, $col)) {
+                        continue;
+                    }
+                    $q            = DB::table($table)->where($col, $userId);
+                    $out['count'] = (clone $q)->count();
+                    $out['last']  = $this->iso((clone $q)->max('created_at'));
+                    return $out;
+                }
+            }
+        } catch (\Throwable $e) {
+            // struktur tabel beda: panel tetap jalan tanpa data pesanan
+        }
+
+        return $out;
     }
 }

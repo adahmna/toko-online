@@ -1,0 +1,124 @@
+/* admin-mobile.css - perapihan dashboard backend untuk HP/tablet kecil */
+@media (max-width: 767.98px) {
+
+  /* Area konten lebih lega */
+  .container-fluid { padding: .75rem .75rem 1rem !important; }
+  .mb-4 { margin-bottom: .75rem !important; }
+
+  /* Topbar / logo */
+  .topbar { height: 3.5rem !important; padding: 0 .5rem !important; }
+  .topbar img, .navbar-brand img { max-height: 38px !important; width: auto !important; }
+  .topbar .navbar-brand, .topbar h1, .topbar .h1 { font-size: 1.1rem !important; }
+
+  /* Kartu / alert "Selamat Datang" */
+  .alert, .jumbotron {
+    padding: .85rem 1rem !important;
+    margin-bottom: .85rem !important;
+    border-radius: .5rem;
+  }
+  .alert h1, .alert h2, .alert h3, .alert h4, .alert h5,
+  .alert .h1, .alert .h2, .alert .h3, .alert .h4, .alert .h5 {
+    font-size: 1.1rem !important;
+    line-height: 1.3 !important;
+    margin-bottom: .35rem !important;
+  }
+  .alert p { font-size: .85rem !important; line-height: 1.4 !important; margin-bottom: .5rem !important; }
+  .alert hr { margin: .5rem 0 !important; }
+
+  /* Jam & tanggal: rapi, rata tengah, satu blok */
+  #clock, #jam, #waktu, .clock, .jam, [id*="clock"], [id*="jam"] {
+    display: block;
+    font-size: 1.5rem !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
+    margin: .25rem 0 !important;
+  }
+  .alert .text-center, .alert [id*="tanggal"], .alert [class*="tanggal"] {
+    font-size: .8rem !important;
+    text-align: center !important;
+  }
+
+  /* Kartu statistik (Total Pesanan, Total Pendapatan, dst) jadi 2 kolom */
+  .row:has(.card[class*="border-left-"]) { margin-left: -6px; margin-right: -6px; }
+  .row:has(.card[class*="border-left-"]) > [class*="col-"] {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+  .card[class*="border-left-"] { height: auto !important; min-height: 0 !important; }
+  .card[class*="border-left-"] .card-body {
+    padding: .75rem !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  .card[class*="border-left-"] .row { align-items: center; }
+  .card[class*="border-left-"] .text-xs,
+  .card[class*="border-left-"] .text-uppercase {
+    font-size: .65rem !important;
+    letter-spacing: .02em;
+  }
+  .card[class*="border-left-"] .h5,
+  .card[class*="border-left-"] h5 {
+    font-size: 1rem !important;
+    margin-bottom: 0 !important;
+    word-break: break-word;
+  }
+  .card[class*="border-left-"] .fa-2x,
+  .card[class*="border-left-"] i[class*="fa-"],
+  .card[class*="border-left-"] svg {
+    font-size: 1.4rem !important;
+    width: 1.4rem !important;
+    height: 1.4rem !important;
+  }
+
+  /* Tabel tidak melebar keluar layar */
+  .table-responsive, .card-body > table { overflow-x: auto; display: block; }
+  .card-header { padding: .6rem .85rem !important; }
+}
+
+/* Layar sangat sempit: kartu statistik 1 kolom */
+@media (max-width: 340px) {
+  .row:has(.card[class*="border-left-"]) > [class*="col-"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* === sticky-mobile:start === */
+@media (max-width: 767.98px) {
+
+  /* Wrapper tidak boleh jadi scroll container, kalau tidak sticky tidak jalan */
+  #wrapper, #content-wrapper, #content, .content-wrapper, .main-panel, .page-wrapper {
+    overflow: visible !important;
+    overflow-x: clip !important;
+  }
+
+  /* Header atas: ikut turun saat halaman di-scroll */
+  .topbar,
+  #content > nav.navbar:first-child,
+  #content-wrapper > nav.navbar:first-child,
+  #content-wrapper > header,
+  header.main-header, .main-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1030 !important;
+  }
+
+  /* Sidebar / menu: menempel di layar, tidak ikut ter-scroll bersama halaman */
+  .sidebar, #accordionSidebar, aside.main-sidebar, #sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 100vw;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;   /* scroll di menu tidak "bocor" ke halaman */
+    -webkit-overflow-scrolling: touch;
+    z-index: 1050;
+  }
+  .sidebar { width: 100%; }         /* tanpa !important supaya state tertutup tetap jalan */
+}
+/* === sticky-mobile:end === */

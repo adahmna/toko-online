@@ -166,7 +166,7 @@ class ProdukController extends Controller
             $validatedData['foto'] = $originalFileName;
 
             // Update foto di tabel foto_produk (hapus lama, insert baru)
-            FotoProduk::where('produk_id', $id)->delete();
+            FotoProduk::where('produk_id', $id)->where('foto', $produk->foto)->delete();
             FotoProduk::create([
                 'produk_id' => $id,
                 'foto'      => $originalFileName,
@@ -181,6 +181,15 @@ class ProdukController extends Controller
 
     public function destroy($id)
     {
+        // Blokir hapus kalau stok produk masih ada
+        $produkCek = Produk::findOrFail($id);
+        if ((int) $produkCek->stok > 0) {
+            $pesan = 'Produk "' . $produkCek->nama_produk . '" tidak bisa dihapus karena stoknya masih ' . (int) $produkCek->stok
+                . '. Kosongkan stok lewat menu Ubah dulu.';
+            return redirect()->route('backend.produk.index')
+                ->with('error', $pesan)
+                ->with('msgError', $pesan);
+        }
         $produk    = Produk::findOrFail($id);
         $directory = public_path('storage/img-produk/');
 
@@ -243,7 +252,7 @@ class ProdukController extends Controller
         $produkId  = $foto->produk_id;
         $imagePath = public_path('storage/img-produk/') . $foto->foto;
 
-        if (file_exists($imagePath)) unlink($imagePath);
+        if (file_exists($imagePath) && !Produk::where('foto', $foto->foto)->exists()) unlink($imagePath);
 
         $foto->delete();
 

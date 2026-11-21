@@ -1,54 +1,50 @@
 @extends('v_layouts.app')
 @section('content')
 
-<!-- STORE -->
-<div id="store">
-    <div class="row">
-        @foreach ($produk as $row)
-        <!-- Product Single -->
-        <div class="col-md-4 col-sm-6 col-xs-6">
-            <div class="product product-single">
-                <div class="product-thumb">
-                    <div class="product-label">
-                        <span>Kategori</span>
-                        <span class="sale">{{ $row->kategori->nama_kategori }}</span>
-                    </div>
-                    <a href="{{ route('produk.detail', $row->id) }}">
-                        <button class="main-btn quick-view"><i class="fa fa-search-plus"></i> Detail Produk</button>
-                    </a>
-                    @if ($row->foto)
-                    <img src="{{ asset('storage/img-produk/thumb_md_' . $row->foto) }}" alt="{{ $row->nama_produk }}">
-                    @else
-                    <img src="{{ asset('storage/img-produk/default.jpg') }}" alt="Default Image">
-                    @endif
-                </div>
-                <div class="product-body">
-                    <h3 class="product-price">Rp. {{ number_format($row->harga, 0, ',', '.') }}</h3>
-                    <h2 class="product-name">
-                        <a href="{{ route('produk.detail', $row->id) }}">{{ $row->nama_produk }}</a>
-                    </h2>
-                    <div class="product-btns">
-                        <a href="{{ route('produk.detail', $row->id) }}" title="Detail Produk">
-                            <button class="main-btn icon-btn"><i class="fa fa-search-plus"></i></button>
-                        </a>
-                        <form action="{{ route('order.addToCart', $row->id) }}" method="post"
-                            style="display: inline-block;" title="Pesan Ke Aplikasi">
-                            @csrf
-                            <button type="submit" class="primary-btn add-to-cart">
-                                <i class="fa fa-shopping-cart"></i> Pesan
-                            </button>
-                        </form>
-                    </div>
-                </div>
+{{-- Pembungkus #store dan .row sudah disediakan oleh v_layouts.app --}}
+@foreach ($produk as $row)
+<!-- Product Single -->
+<div class="col-md-4 col-sm-6 col-xs-6">
+    <div class="product product-single">
+        <div class="product-thumb">
+            <div class="product-label">
+                <span>Kategori</span>
+                <span class="sale">{{ $row->kategori->nama_kategori }}</span>
+            </div>
+            <a href="{{ route('produk.detail', $row->id) }}">
+                <button class="main-btn quick-view"><i class="fa fa-search-plus"></i> Detail Produk</button>
+            </a>
+            @if ($row->foto)
+            <img src="{{ asset('storage/img-produk/thumb_md_' . $row->foto) }}" alt="{{ $row->nama_produk }}">
+            @else
+            <img src="{{ asset('storage/img-produk/default.jpg') }}" alt="Default Image">
+            @endif
+        </div>
+        <div class="product-body">
+            <h3 class="product-price">Rp. {{ number_format($row->harga, 0, ',', '.') }}</h3>
+            <h2 class="product-name">
+                <a href="{{ route('produk.detail', $row->id) }}">{{ $row->nama_produk }}</a>
+            </h2>
+            <div class="product-btns">
+                <a href="{{ route('produk.detail', $row->id) }}" title="Detail Produk">
+                    <button class="main-btn icon-btn"><i class="fa fa-search-plus"></i></button>
+                </a>
+                <form action="{{ route('order.addToCart', $row->id) }}" method="post"
+                    style="display: inline-block;" title="Pesan Ke Aplikasi">
+                    @csrf
+                    <button type="submit" class="primary-btn add-to-cart">
+                        <i class="fa fa-shopping-cart"></i> Pesan
+                    </button>
+                </form>
             </div>
         </div>
-        <!-- /Product Single -->
-        @endforeach
     </div>
+</div>
+<!-- /Product Single -->
+@endforeach
 
-    <!-- Links Pagination -->
-    <div class="d-flex justify-content-center mt-4">
-        {{ $produk->links() }}
-    </div>
+<!-- Links Pagination -->
+<div class="col-xs-12 text-center">
+    {{ $produk->links() }}
 </div>
 @endsection

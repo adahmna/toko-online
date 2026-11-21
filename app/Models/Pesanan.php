@@ -11,6 +11,18 @@ class Pesanan extends Model
 
     protected $table = 'pesanan';
 
+    protected static function booted()
+    {
+        // setiap pesanan baru -> chat otomatis berisi kartu konfirmasi alamat
+        static::created(function ($pesanan) {
+            try {
+                \App\Http\Controllers\LiveChatController::notifyOrder($pesanan);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+    }
+
     protected $fillable = [
         'user_id',
         'kode_pesanan',
@@ -72,4 +84,8 @@ class Pesanan extends Model
         if (! $this->batas_pembayaran) return 0;
         return max(0, now()->diffInSeconds($this->batas_pembayaran, false));
     }
-}
+
+    public function fotoBukti()
+    {
+        return $this->hasMany(\App\Models\PesananFotoBukti::class, 'pesanan_id')->latest();
+    }}

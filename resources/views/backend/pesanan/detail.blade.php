@@ -129,6 +129,10 @@
     display: flex;
     gap: 10px;
 }
+
+.bukti-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.bukti-item { width: 140px; font-size: 12px; color: #666; }
+.bukti-item img { width: 140px; height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; }
 </style>
 
 <div class="detail-pesanan-card">
@@ -262,5 +266,51 @@
         </div>
     </form>
 
+
+    <hr style="margin:28px 0;">
+
+    <h6 style="font-weight:700; color:#444; font-size:13px; text-transform:uppercase; margin-bottom:10px;">
+        Foto Bukti dari Penjual
+    </h6>
+
+    <form action="{{ route('admin.pesanan.foto-bukti.store', $item->id) }}" method="POST"
+        enctype="multipart/form-data">
+        @csrf
+        <div class="form-section">
+            <div class="form-group">
+                <label>Foto (JPG/PNG/WEBP, maks 3 MB)</label>
+                <input type="file" name="foto" class="form-control" accept="image/*" required>
+                @error('foto') <small class="text-danger">{{ $message }}</small> @enderror
+            </div>
+            <div class="form-group">
+                <label>Keterangan (opsional)</label>
+                <input type="text" name="keterangan" class="form-control"
+                    placeholder="Contoh: Barang sudah dikemas">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success btn-sm">Unggah Foto</button>
+    </form>
+
+    @if($item->fotoBukti->count())
+    <div class="bukti-grid">
+        @foreach($item->fotoBukti as $f)
+        <div class="bukti-item">
+            <a href="{{ asset('storage/' . $f->foto) }}" target="_blank">
+                <img src="{{ asset('storage/' . $f->foto) }}" alt="Foto bukti">
+            </a>
+            <div>{{ $f->keterangan ?? '-' }}</div>
+            <div>{{ $f->created_at->format('d M Y H:i') }}</div>
+            <form action="{{ route('admin.pesanan.foto-bukti.destroy', $f->id) }}" method="POST"
+                onsubmit="return confirm('Hapus foto ini?')">
+                @csrf
+                @method('DELETE')
+                <button class="btn btn-danger btn-sm" style="padding:1px 8px;">Hapus</button>
+            </form>
+        </div>
+        @endforeach
+    </div>
+    @else
+    <p style="font-size:13px; color:#888; margin-top:10px;">Belum ada foto bukti.</p>
+    @endif
 </div>
 @endsection

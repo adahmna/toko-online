@@ -39,21 +39,21 @@
                                 {{-- Isi Kolom Aksi: Hanya tampil jika bukan Customer --}}
                                 @if(auth()->user()->role !== '2')
                                 <td>
-                                    <a href="{{ route('backend.kategori.edit', $row->id) }}" title="Ubah Data">
+                                    <div class="d-flex flex-wrap" style="gap: 6px;"><a href="{{ route('backend.kategori.edit', $row->id) }}" title="Ubah Data">
                                         <button type="button" class="btn btn-cyan btn-sm">
                                             <i class="far fa-edit"></i> Ubah
                                         </button>
                                     </a>
 
                                     <form method="POST" action="{{ route('backend.kategori.destroy', $row->id) }}"
-                                        id="form-hapus-{{ $row->id }}" style="display: inline-block;">
+                                        id="form-hapus-{{ $row->id }}">
                                         @method('DELETE')
                                         @csrf
                                         <button type="button" class="btn btn-danger btn-sm btn-hapus"
                                             data-id="{{ $row->id }}" data-nama="{{ $row->nama_kategori }}">
                                             <i class="far fa-trash-alt"></i> Hapus
                                         </button>
-                                    </form>
+                                    </form></div>
                                 </td>
                                 @endif
                             </tr>
@@ -70,7 +70,6 @@
 
 {{-- Script SweetAlert: Hanya dimuat jika bukan Customer --}}
 @if(auth()->user()->role !== '2')
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.querySelectorAll('.btn-hapus').forEach(function(btn) {
     btn.addEventListener('click', function() {

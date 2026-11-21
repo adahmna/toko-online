@@ -1,0 +1,222 @@
+﻿=== BLADE 15-70 ===
+    </div>
+    <div class="lc-messages" id="lcMessages">
+        <div class="lc-msg them" id="lcEmpty">
+            <div class="lc-bubble" id="lcWelcome"></div>
+            <div class="lc-time"><span>BSI Cyber Store</span></div>
+        </div>
+    </div>
+    <div class="lc-bar" id="lcBar">
+        <div class="lc-bar-body">
+            <div class="lc-bar-title" id="lcBarTitle"></div>
+            <div class="lc-bar-text" id="lcBarText"></div>
+        </div>
+        <button type="button" class="lc-bar-close" id="lcBarClose" aria-label="Batal">&times;</button>
+    </div>
+    <div class="lc-input">
+        <input type="text" id="lcInput" placeholder="Ketik pesan..." maxlength="1000" autocomplete="off">
+        <button type="button" id="lcSend" aria-label="Kirim"><i class="fa fa-paper-plane"></i></button>
+    </div>
+</div>
+
+<style>
+.lc-fab {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: #F8694A;
+    color: #fff;
+    font-size: 22px;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 4px 18px rgba(248, 105, 74, 0.45);
+    transition: transform 0.2s;
+    padding: 0;
+}
+
+.lc-fab:hover {
+    transform: scale(1.1);
+}
+
+.lc-badge {
+    display: none;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 20px;
+    height: 20px;
+    line-height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: #e74c3c;
+    color: #fff;
+    font-size: 11px;
+=== BLADE 1110-1180 ===
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            send();
+        } else if (e.key === 'Escape') {
+            cancelCompose();
+        }
+    });
+
+    setWelcome();
+    poll();
+})();
+</script>
+@endauth
+<script>
+/* chat-mic-kirim */
+(function () {
+    var input, send, mic;
+
+    function cari() {
+        input = document.querySelector('input[placeholder^="Ketik pesan"], textarea[placeholder^="Ketik pesan"]');
+        if (!input) return false;
+        var p = input;
+        for (var i = 0; i < 6 && p.parentElement; i++) {
+            p = p.parentElement;
+            var els = p.querySelectorAll('button, a, div[role="button"], span[role="button"], div, span');
+            for (var j = 0; j < els.length; j++) {
+                var el = els[j];
+                var t = (el.textContent || '').trim().toLowerCase();
+                var ident = ((el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : '')).toLowerCase();
+                if (!send && t === 'kirim' && el.children.length === 0) send = el;
+                if (!mic && /mic|voice|suara/.test(ident)) mic = el;
+            }
+            if (send && mic) break;
+        }
+        if (send) { var b = send.closest('button, a'); if (b) send = b; }
+        return !!(send && mic);
+    }
+
+    function tampil(el, ya) {
+        if (ya) el.style.removeProperty('display');
+        else el.style.setProperty('display', 'none', 'important');
+    }
+
+    function cek() {
+        var ada = input.value.trim().length > 0;
+        tampil(send, ada);
+        tampil(mic, !ada);
+    }
+
+    var coba = 0;
+    var tunggu = setInterval(function () {
+        coba++;
+        if (cari()) {
+            clearInterval(tunggu);
+            input.addEventListener('input', cek);
+            input.addEventListener('keyup', cek);
+            setInterval(cek, 300); // menangkap input yang dikosongkan lewat JS setelah kirim
+            cek();
+        } else if (coba > 40) {
+            clearInterval(tunggu);
+            console.warn('chat-mic-kirim: elemen chat tidak ditemukan');
+        }
+    }, 250);
+})();
+</script>
+=== JS 265-300 ===
+    let cur = null;   // pemutar audio aktif: { id, audio, el }
+    let emoTab = 0;   // tab emoji terakhir yang dibuka
+    let prodTimer = null;
+
+    const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && w.MediaRecorder);
+    const canProduct = !!(cfg.urls && cfg.urls.products);
+
+    /* composer */
+    comp.innerHTML =
+      '<div class="lc-banner" hidden></div>' +
+      '<div class="lc-preview" hidden></div>' +
+      '<div class="lc-panel" hidden></div>' +
+      (cfg.mode === 'customer' ? '<div class="lc-chips" style="display:none">' + CHIPS.map(c => '<button type="button" class="lc-chip" data-q="' + esc(c) + '">' + esc(c) + '</button>').join('') + '</div>' : '') +
+      '<div class="lc-row">' +
+        '<button type="button" class="lc-btn lc-attach" title="Lampirkan">ðŸ“Ž</button>' +
+        (canProduct ? '<button type="button" class="lc-btn lc-prod" title="Kirim produk">ðŸ›ï¸</button>' : '') +
+        '<button type="button" class="lc-btn lc-emoji" title="Emoji">ðŸ˜Š</button>' +
+        '<textarea class="lc-text" rows="1" maxlength="1000" placeholder="' + (cfg.mode === 'admin' ? 'Tulis balasan...' : 'Ketik pesan...') + '"></textarea>' +
+        '<button type="button" class="lc-send">Kirim</button>' +
+        '<button type="button" class="lc-mic" title="Rekam pesan suara" aria-label="Rekam pesan suara">' + SVG_MIC + '</button>' +
+      '</div>' +
+      '<div class="lc-rec" hidden>' +
+        '<button type="button" class="lc-rec-del" title="Batalkan" aria-label="Batalkan rekaman">ðŸ—‘ï¸</button>' +
+        '<span class="lc-rec-dot"></span><span class="lc-rec-time">0:00</span>' +
+        '<span class="lc-rec-wave">' + '<i></i>'.repeat(26) + '</span>' +
+        '<button type="button" class="lc-rec-send" title="Kirim" aria-label="Kirim pesan suara">' + SVG_SEND + '</button>' +
+      '</div>' +
+      '<input type="file" class="lc-in-doc" hidden style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar">' +
+      '<input type="file" class="lc-in-img" hidden style="display:none" accept="image/*">' +
+      '<input type="file" class="lc-in-cam" hidden style="display:none" accept="image/*" capture="environment">' +
+      '<input type="file" class="lc-in-aud" hidden style="display:none" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus">';
+
+    const $ = s => comp.querySelector(s);
+    const input = $('.lc-text'), panel = $('.lc-panel'), prev = $('.lc-preview'), banner = $('.lc-banner');
+    const inDoc = $('.lc-in-doc'), inImg = $('.lc-in-img'), inCam = $('.lc-in-cam'), inAud = $('.lc-in-aud');
+    const rowEl = $('.lc-row'), recEl = $('.lc-rec');
+=== BARIS mic/kirim/send ===
+live-chat.blade.php:31: <button type="button" id="lcSend" aria-label="Kirim"><i class="fa fa-paper-plane"></i></button>
+live-chat.blade.php:528: const sendBtn = document.getElementById('lcSend');
+live-chat.blade.php:537: const URL_SEND = "{{ route('livechat.send') }}";
+live-chat.blade.php:687: const mine = m.sender === 'customer';
+live-chat.blade.php:697: b.textContent = m.reply.sender === 'customer' ? 'Anda' : 'Admin';
+live-chat.blade.php:722: const mine = m.sender === 'customer';
+live-chat.blade.php:780: if (m.sender === 'customer') setTick(id, st.status);
+live-chat.blade.php:819: showBar('Membalas ' + (m.sender === 'customer' ? 'pesan Anda' : 'Admin'), m.message);
+live-chat.blade.php:916: ['Terkirim', fmtFull(m.created_at)],
+live-chat.blade.php:931: const mine = m.sender === 'customer';
+live-chat.blade.php:1061: /* ===== Kirim / simpan edit ===== */
+live-chat.blade.php:1062: async function send() {
+live-chat.blade.php:1066: sendBtn.disabled = true;
+live-chat.blade.php:1076: const data = await post(URL_SEND, {
+live-chat.blade.php:1086: toast(editing ? 'Gagal menyimpan (batas edit 15 menit)' : 'Pesan gagal dikirim');
+live-chat.blade.php:1088: sendBtn.disabled = false;
+live-chat.blade.php:1109: sendBtn.addEventListener('click', send);
+live-chat.blade.php:1113: send();
+live-chat.blade.php:1125: /* chat-mic-kirim */
+live-chat.blade.php:1127: var input, send, mic;
+live-chat.blade.php:1140: if (!send && t === 'kirim' && el.children.length === 0) send = el;
+live-chat.blade.php:1141: if (!mic && /mic|voice|suara/.test(ident)) mic = el;
+live-chat.blade.php:1143: if (send && mic) break;
+live-chat.blade.php:1145: if (send) { var b = send.closest('button, a'); if (b) send = b; }
+live-chat.blade.php:1146: return !!(send && mic);
+live-chat.blade.php:1156: tampil(send, ada);
+live-chat.blade.php:1157: tampil(mic, !ada);
+live-chat.blade.php:1167: setInterval(cek, 300); // menangkap input yang dikosongkan lewat JS setelah kirim
+live-chat.blade.php:1171: console.warn('chat-mic-kirim: elemen chat tidak ditemukan');
+livechat.js:11: *   urls: { messages(after), send(), edit(id), del(id), products(q) },  // products opsional
+livechat.js:15: * Lampiran: Dokumen, Foto, Kamera, Audio + Voice Note (tombol mikrofon seperti WhatsApp).
+livechat.js:16: * Kirim produk: tombol tas belanja (muncul jika urls.products diisi).
+livechat.js:17: * Stiker tidak lagi dikirim, tetapi pesan stiker lama tetap tampil.
+livechat.js:34: const MAX_REC_SEC = 180; // batas rekaman voice note (3 menit)
+livechat.js:36: const SVG_MIC  = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+livechat.js:37: const SVG_SEND = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>';
+livechat.js:104: case 'voice':   return '🎤 Pesan suara' + (m.attachment && m.attachment.duration ? ' (' + mmss(m.attachment.duration) + ')' : '');
+livechat.js:131: 'Kapan pesanan saya akan dikirim?',
+livechat.js:179: '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+livechat.js:185: '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+livechat.js:214: if (!m.deleted && m.type === 'bot_reply') return '<div class="lc-bot-text">' + esc(m.message) + '</div><div class="lc-bot-note">Dikirim oleh chatbot</div>';
+livechat.js:224: if ((m.type === 'voice' || m.type === 'audio') && a) {
+livechat.js:225: const isVoice = m.type === 'voice';
+livechat.js:226: h += '<div class="lc-voice' + (isVoice ? '' : ' is-file') + '" data-src="' + esc(a.url) + '" data-dur="' + (+a.duration || 0) + '">' +
+livechat.js:229: (isVoice ? '' : '<small class="lc-vname">' + esc(a.name) + '</small>') + '</div>' +
+livechat.js:263: let replyTo = null, editing = null, file = null, sending = false, stick = true;
+livechat.js:264: let rec = null;   // sesi rekaman voice note yang sedang berjalan
+livechat.js:280: (canProduct ? '<button type="button" class="lc-btn lc-prod" title="Kirim produk">🛍️</button>' : '') +
+livechat.js:283: '<button type="button" class="lc-send">Kirim</button>' +
+livechat.js:284: '<button type="button" class="lc-mic" title="Rekam pesan suara" aria-label="Rekam pesan suara">' + SVG_MIC + '</button>' +
+livechat.js:290: '<button type="button" class="lc-rec-send" title="Kirim" aria-label="Kirim pesan suara">' + SVG_SEND + '</button>' +
+livechat.js:333: /* tombol kirim <-> mikrofon (seperti WhatsApp: kolom kosong = mikrofon) */
+livechat.js:340: /* ---------- pemutar audio / voice note ---------- */
+livechat.js:341: function paintVoice() {
+livechat.js:355: paintVoice();
+livechat.js:370: audio.addEventListener('timeupdate', () => { if (mineAudio()) paintVoice(); });
+livechat.js:371: audio.addEventListener('loadedmetadata', () => { if (mineAudio()) paintVoice(); });
+livechat.js:372: audio.addEventListener('play', () => { if (mineAudio()) paintVoice(); });
+livechat.js:373: audio.addEventListener('pause', () => { if (mineAudio()) paintVoice(); });
+livechat.js:374: audio.addEventListener('ended', () => { if (mineAudio()) { audio.currentTime = 0; paintVoice(); } });

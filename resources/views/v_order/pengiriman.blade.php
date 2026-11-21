@@ -1,7 +1,294 @@
 @extends('v_layouts.app')
 @section('content')
+
+{{-- ===== KOTAK V2: jarak dalam seragam, tanpa scrollbar dalam ===== --}}
+<style>
+    .panduan-fix {
+        overflow-x: clip !important;
+        overflow-y: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    .kotak-scroll-fix {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        box-sizing: border-box !important;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var area = document.querySelector('.panduan-fix');
+    if (!area) return;
+
+    function dalamLayerMelayang(el) {
+        for (var n = el; n && n !== document.body; n = n.parentElement) {
+            var pos = getComputedStyle(n).position;
+            if (pos === 'fixed' || pos === 'sticky') return true;
+        }
+        return false;
+    }
+
+    area.querySelectorAll('div, section, article, ul, ol').forEach(function (el) {
+        if (dalamLayerMelayang(el)) return;
+        if (el.closest('header, footer, nav, #responsive-nav, .menu-header, [class*="chat"], [id*="chat"], [class*="modal"]')) return;
+        var cs = getComputedStyle(el);
+        if (cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+            el.classList.add('kotak-scroll-fix');
+        }
+    });
+});
+</script>
+{{-- ===== END KOTAK V2 ===== --}}
+
+
+
+{{-- ===== FAQ: jarak ikon plus/minus dari tepi ===== --}}
+<style>
+    .faq-baris-fix {
+        padding-right: 22px !important;
+        box-sizing: border-box !important;
+    }
+    .faq-ikon-fix {
+        margin-right: 6px !important;
+        flex-shrink: 0 !important;
+    }
+    [class*="faq"] [class*="question"],
+    [class*="faq"] [class*="header"],
+    [class*="accordion"] button,
+    [class*="accordion"] [class*="header"],
+    details > summary {
+        padding-right: 22px !important;
+        box-sizing: border-box !important;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var simbol = ['+', '-', '−', '–', '×', '✕'];
+    var area = document.querySelector('.panduan-fix') || document.querySelector('main') || document.body;
+
+    area.querySelectorAll('*').forEach(function (el) {
+        if (el.closest('header, footer, nav, #responsive-nav, .menu-header, [class*="chat"], [id*="chat"]')) return;
+
+        var adaIkon = el.matches('i[class*="fa-plus"], i[class*="fa-minus"], i[class*="fa-chevron"], i[class*="fa-angle"]');
+        var adaTeks = el.children.length === 0 && simbol.indexOf(el.textContent.trim()) !== -1;
+        if (!adaIkon && !adaTeks) return;
+
+        el.classList.add('faq-ikon-fix');
+
+        var baris = el.parentElement;
+        for (var i = 0; i < 3 && baris && baris !== area; i++) {
+            if (baris.textContent.indexOf('?') !== -1) break;
+            baris = baris.parentElement;
+        }
+        if (baris && baris !== area) baris.classList.add('faq-baris-fix');
+    });
+});
+</script>
+{{-- ===== END FAQ ===== --}}
+
+{{-- ===== PANDUAN PENGIRIMAN: rapihin tampilan HP ===== --}}
+<style>
+    @media (max-width: 768px) {
+        .panduan-fix {
+            width: 100%;
+            max-width: 100%;
+            padding: 0 16px !important;
+            margin: 0 auto !important;
+            overflow-x: hidden;
+            box-sizing: border-box;
+        }
+        .panduan-fix *,
+        .panduan-fix *::before,
+        .panduan-fix *::after {
+            box-sizing: border-box;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-wrap: break-word;
+        }
+
+        /* kolom jadi tersusun ke bawah */
+        .panduan-fix .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+        .panduan-fix [class*="col-"] {
+            flex: 0 0 100% !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            margin-bottom: 16px;
+            float: none !important;
+        }
+        .panduan-fix .container,
+        .panduan-fix .container-fluid {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            width: 100% !important;
+        }
+
+        /* gambar, video, embed */
+        .panduan-fix img,
+        .panduan-fix video,
+        .panduan-fix iframe {
+            max-width: 100% !important;
+            height: auto;
+        }
+
+        /* elemen dengan lebar tetap (inline style) */
+        .panduan-fix div[style*="width"],
+        .panduan-fix section[style*="width"] {
+            max-width: 100% !important;
+        }
+
+        /* tabel bisa digeser ke samping */
+        .panduan-fix table {
+            display: block;
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* teks */
+        .panduan-fix h1 { font-size: 24px !important; line-height: 1.25; }
+        .panduan-fix h2 { font-size: 20px !important; line-height: 1.3; }
+        .panduan-fix h3 { font-size: 18px !important; line-height: 1.3; }
+        .panduan-fix h4,
+        .panduan-fix h5 { font-size: 16px !important; line-height: 1.3; }
+        .panduan-fix p,
+        .panduan-fix li,
+        .panduan-fix td,
+        .panduan-fix th,
+        .panduan-fix span {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .panduan-fix ul,
+        .panduan-fix ol {
+            padding-left: 20px;
+        }
+
+        /* kartu / kotak langkah */
+        .panduan-fix [class*="card"],
+        .panduan-fix [class*="box"],
+        .panduan-fix [class*="step"],
+        .panduan-fix [class*="item"] {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+    }
+</style>
+{{-- ===== END PANDUAN PENGIRIMAN ===== --}}
+
+{{-- ===== PANDUAN PENGIRIMAN: jarak nama ekspedisi dan layanan ===== --}}
+<style>
+    .ekspedisi-nama-fix {
+        margin-right: 10px !important;
+    }
+    .ekspedisi-layanan-fix {
+        margin-left: 10px !important;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var daftar = ['JNE', 'J&T Express', 'J&T', 'SiCepat', 'Anteraja', 'POS Indonesia', 'TIKI', 'Ninja Xpress', 'Ninja', 'SAP Express', 'SAP'];
+
+    document.querySelectorAll('.panduan-fix *').forEach(function (el) {
+        if (el.children.length > 0) return;                  // hanya elemen paling dalam
+        var teks = el.textContent.trim();
+        if (daftar.indexOf(teks) === -1) return;
+
+        // elemen setelah nama ekspedisi = keterangan layanan (Reguler, YES, dst)
+        var layanan = el.nextElementSibling;
+        if (layanan && layanan.textContent.trim()) {
+            el.classList.add('ekspedisi-nama-fix');
+            layanan.classList.add('ekspedisi-layanan-fix');
+        }
+    });
+});
+</script>
+{{-- ===== END PANDUAN PENGIRIMAN: jarak nama ekspedisi dan layanan ===== --}}
+
+{{-- ===== PANDUAN PENGIRIMAN: perbaikan melebar ke kanan ===== --}}
+<style>
+    @media (max-width: 768px) {
+        html, body { overflow-x: hidden !important; max-width: 100vw; }
+
+        .panduan-fix {
+            width: 100% !important;
+            max-width: 100vw !important;
+            padding: 0 18px !important;
+            margin: 0 auto !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+        }
+        .panduan-fix * {
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+        }
+
+        /* semua wadah berjejer boleh turun baris */
+        .panduan-fix div, .panduan-fix ul, .panduan-fix section {
+            flex-wrap: wrap;
+        }
+
+        /* grid jadi satu kolom */
+        .panduan-fix [class*="grid"],
+        .panduan-fix div[style*="grid"] {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+        }
+
+        /* lebar / margin tetap dilepas */
+        .panduan-fix [style*="width"] { width: auto !important; }
+        .panduan-fix section,
+        .panduan-fix [class*="hero"],
+        .panduan-fix [class*="wrap"],
+        .panduan-fix [class*="container"] {
+            width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+
+        /* pill / badge: ukuran pas dan boleh turun baris */
+        .panduan-fix [class*="pill"],
+        .panduan-fix [class*="badge"],
+        .panduan-fix [class*="chip"],
+        .panduan-fix [class*="tag"] {
+            white-space: normal !important;
+            display: inline-flex;
+        }
+    }
+</style>
+{{-- ===== END PANDUAN PENGIRIMAN: perbaikan melebar ===== --}}<div class="panduan-fix">
+
 <meta name="total-harga" content="{{ $totalHarga }}">
 <meta name="total-berat" content="{{ $totalBerat }}">
+<style>
+/* FIX-LEBAR-HP */
+@media (max-width: 991px) {
+    #main, #store, #store .row, #store .row > .col-md-12, .order-summary {
+        width: 100% !important;
+        max-width: 100% !important;
+        float: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    .order-summary .form-control, .order-summary .btn {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+</style>
 <div class="col-md-12">
     <div class="order-summary clearfix">
         <div class="section-title">
@@ -217,4 +504,5 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+</div>
 @endsection
