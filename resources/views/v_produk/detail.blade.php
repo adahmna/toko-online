@@ -80,6 +80,20 @@
     overflow-x: auto;
 }
 
+/* pilihan satuan berat */
+.berat-satuan {
+    display: inline-block;
+    width: auto;
+    height: 30px;
+    margin-left: 8px;
+    padding: 2px 6px;
+    font-size: 13px;
+    border: 1px solid #e4e7ed;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+}
+
 @media (max-width: 767px) {
     .pd-main {
         height: 240px;
@@ -146,7 +160,15 @@ $fotoGaleri[] = [
                 <div class="product-options">
                     <ul class="size-option">
                         <li><span class="text-uppercase">Berat:</span></li>
-                        {{ $row->berat }} Gram
+                        <span id="beratNilai" data-gram="{{ (float) $row->berat }}">{{ $row->berat }} Gram</span>
+                        <select id="beratSatuan" class="berat-satuan" aria-label="Satuan berat">
+                            <option value="g">Gram (g)</option>
+                            <option value="kg">Kilogram (kg)</option>
+                            <option value="ons">Ons</option>
+                            <option value="lb">Pon (lb)</option>
+                            <option value="mg">Miligram (mg)</option>
+                            <option value="ton">Ton</option>
+                        </select>
                     </ul>
                     <ul class="size-option">
                         <li><span class="text-uppercase">Stok:</span></li>
@@ -182,6 +204,77 @@ $fotoGaleri[] = [
             });
             this.classList.add('active');
         });
+    });
+})();
+
+// Satuan berat: data di database tetap gram, ini hanya tampilan
+(function() {
+    var nilaiEl = document.getElementById('beratNilai');
+    var pilihEl = document.getElementById('beratSatuan');
+    if (!nilaiEl || !pilihEl) return;
+
+    var gram = parseFloat(nilaiEl.getAttribute('data-gram')) || 0;
+
+    // berapa gram untuk 1 satuan
+    var satuan = {
+        g: {
+            gram: 1,
+            label: 'gram'
+        },
+        kg: {
+            gram: 1000,
+            label: 'kg'
+        },
+        ons: {
+            gram: 100,
+            label: 'ons'
+        },
+        lb: {
+            gram: 453.592,
+            label: 'lb'
+        },
+        mg: {
+            gram: 0.001,
+            label: 'mg'
+        },
+        ton: {
+            gram: 1000000,
+            label: 'ton'
+        }
+    };
+
+    function format(v) {
+        var s = v.toLocaleString('id-ID', {
+            maximumFractionDigits: 3
+        });
+        // nilai sangat kecil (mis. 0,00004 ton) jangan tampil 0
+        if (s === '0' && v > 0) {
+            s = v.toLocaleString('id-ID', {
+                maximumSignificantDigits: 2
+            });
+        }
+        return s;
+    }
+
+    function tampilkan(kode) {
+        var u = satuan[kode] || satuan.g;
+        nilaiEl.textContent = format(gram / u.gram) + ' ' + u.label;
+    }
+
+    var tersimpan = 'g';
+    try {
+        tersimpan = localStorage.getItem('satuanBerat') || 'g';
+    } catch (e) {}
+    if (!satuan[tersimpan]) tersimpan = 'g';
+
+    pilihEl.value = tersimpan;
+    tampilkan(tersimpan);
+
+    pilihEl.addEventListener('change', function() {
+        tampilkan(this.value);
+        try {
+            localStorage.setItem('satuanBerat', this.value);
+        } catch (e) {}
     });
 })();
 </script>

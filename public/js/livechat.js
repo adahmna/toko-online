@@ -136,7 +136,8 @@
     'Di mana pesanan saya?',
     'Bisakah saya mengubah alamat pesanan?',
     'Bisakah saya membatalkan pesanan saya?',
-    'Bagaimana cara mengembalikan produk?'
+    'Bagaimana cara mengembalikan produk?',
+    'Chat dengan penjual'
   ];
   const CHIPS = ['Ubah alamat', 'Minta pengembalian dana', 'Lacak pesanan'];
   // FAQ untuk customer yang belum punya pesanan (harus sama persis dengan GENERAL_FAQ_KEYS di controller)
@@ -146,7 +147,8 @@
     'Ekspedisi apa saja yang tersedia?',
     'Metode pembayaran apa saja?',
     'Apakah produk masih tersedia?',
-    'Bagaimana jika barang rusak atau tidak sesuai?'
+    'Bagaimana jika barang rusak atau tidak sesuai?',
+    'Chat dengan penjual'
   ];
   let HAS_ORDER = false;
 
@@ -608,7 +610,11 @@
       const cb = e.target.closest('.lc-cancel-btn');
       if (cb) { cb.disabled = true; quick('Saya ingin membatalkan pesanan ' + (cb.dataset.code || '')); return; }
       const fq = e.target.closest('.lc-faq-item');
-      if (fq) { quick(fq.dataset.q); return; }
+      if (fq) {
+        quick(fq.dataset.q);
+        if (fq.dataset.q === 'Chat dengan penjual') setTimeout(function () { input.focus(); }, 700);
+        return;
+      }
       const ob = e.target.closest('.lc-order-btn');
       if (ob) { confirmAddress(+ob.closest('.lc-msg').dataset.id, ob); return; }
 const vp = e.target.closest('.lc-vplay');

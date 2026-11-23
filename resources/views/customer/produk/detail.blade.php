@@ -129,7 +129,7 @@ $fotoGaleri[] = [
         </div>
         <p><strong>Berat:</strong> {{ $row->berat }} Gram</p>
         <p><strong>Stok:</strong> {{ $row->stok }}</p>
-        <p>{!! $row->detail !!}</p>
+        <div class="product-desc">{!! $row->detail !!}</div>
         <div class="product-btns">
             <form action="{{ route('order.addToCart', $row->id) }}" method="POST">
                 @csrf

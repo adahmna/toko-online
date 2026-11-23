@@ -10,13 +10,17 @@
                 <p style="margin-bottom:18px;">
                     <i class="fa fa-envelope-o" style="width:24px; color:#f2541c;"></i>
                     <strong>Email</strong><br>
-                    <a href="mailto:{{ $kontak['email'] }}">{{ $kontak['email'] }}</a>
+                    @php
+$subjek = 'Pertanyaan untuk BSI Cyber Store';
+$isi = "Halo BSI Cyber Store,\n\nNama:\nNomor HP:\nKeperluan/pertanyaan:\n\nTerima kasih.";
+@endphp
+<a href="https://mail.google.com/mail/?view=cm&fs=1&to={{ $kontak['email'] }}&su={{ rawurlencode($subjek) }}&body={{ rawurlencode($isi) }}" target="_blank" rel="noopener">{{ $kontak['email'] }}</a>
                 </p>
 
                 <p style="margin-bottom:18px;">
                     <i class="fab fa-whatsapp" style="width:24px; color:#f2541c;"></i>
                     <strong>WhatsApp</strong><br>
-                    <a href="https://wa.me/{{ $kontak['whatsapp'] }}" target="_blank" rel="noopener">
+                    <a href="https://wa.me/{{ preg_replace('/\D/', '', $kontak['whatsapp']) }}?text=Halo%20BSI%20Cyber%20Store%2C%20saya%20ingin%20bertanya." target="_blank" rel="noopener">
                         +{{ $kontak['whatsapp'] }}
                     </a>
                 </p>
@@ -24,7 +28,10 @@
                 <p style="margin-bottom:18px;">
                     <i class="fa fa-phone" style="width:24px; color:#f2541c;"></i>
                     <strong>Telepon</strong><br>
-                    {{ $kontak['telepon'] }}
+                    @php
+$tel = preg_replace('/^0/', '62', preg_replace('/\D/', '', $kontak['telepon']));
+@endphp
+<a href="tel:+{{ $tel }}">+{{ substr($tel, 0, 2) }} {{ substr($tel, 2, 3) }}-{{ substr($tel, 5, 4) }}-{{ substr($tel, 9) }}</a>
                 </p>
 
                 <p style="margin-bottom:0;">

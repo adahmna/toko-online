@@ -1048,6 +1048,30 @@ header.topbar::after {
 })();
 </script>
 <!-- SIDEBAR-ANIM-END -->
+<!-- HAMBURGER-TENGAH-START -->
+<style>
+/* Hamburger desktop: rata tengah vertikal di header */
+@media (min-width: 768px) {
+    html body header.topbar .navbar-collapse {
+        align-items: center !important;
+    }
+    html body header.topbar .navbar-nav.float-left {
+        align-items: center !important;
+    }
+    html body header.topbar .nav-link.sidebartoggler {
+        display: flex !important;
+        align-items: center !important;
+        height: var(--topbar-h, 64px) !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        line-height: 1 !important;
+    }
+    html body header.topbar .hamburger-btn {
+        margin: 0 !important;
+    }
+}
+</style>
+<!-- HAMBURGER-TENGAH-END -->
 </head>
 
 <body>

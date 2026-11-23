@@ -25,6 +25,69 @@
     z-index: 2;
 }
 
+/* ===== PRODUK TIDAK TERSEDIA / PERUBAHAN HARGA & JUMLAH ===== */
+.shopping-cart-table tr.item-tidak-tersedia {
+    background: #f5f5f5;
+}
+
+.shopping-cart-table tr.item-tidak-tersedia td.thumb img,
+.shopping-cart-table tr.item-tidak-tersedia td.price,
+.shopping-cart-table tr.item-tidak-tersedia td.qty,
+.shopping-cart-table tr.item-tidak-tersedia td.total {
+    opacity: 0.5;
+}
+
+.shopping-cart-table tr.item-tidak-tersedia td.thumb img {
+    filter: grayscale(100%);
+}
+
+.shopping-cart-table tr.item-tidak-tersedia td.details a {
+    color: #999;
+}
+
+.badge-tidak-tersedia {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: #f8d7da;
+    color: #721c24;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.catatan-item {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #8a6d3b;
+}
+
+.harga-lama {
+    display: block;
+    font-size: 12px;
+    color: #999;
+    text-decoration: line-through;
+}
+
+.cart-subtotal {
+    margin: 12px 0;
+    text-align: right;
+    font-size: 15px;
+}
+
+.primary-btn.btn-nonaktif {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.catatan-checkout {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #a94442;
+    text-align: right;
+}
+
 /* ===== TAMPILAN HP: tiap produk jadi satu kartu ===== */
 @media (max-width: 767px) {
     .order-summary {
@@ -124,6 +187,10 @@
         width: 100%;
         text-align: center;
     }
+
+    .catatan-checkout {
+        text-align: center;
+    }
 }
 </style>
 <div class="col-md-12">
@@ -156,6 +223,14 @@
         {{-- end msgError --}}
 
         @if($order && $order->orderItems->count() > 0)
+
+        @php
+        // ada produk yang tidak tersedia? (flag "tersedia" diisi OrderController::sinkronkanKeranjang)
+        $adaTidakTersedia = $order->orderItems->contains(fn ($i) => ($i->tersedia ?? true) === false);
+        $totalHarga = 0;
+        $totalBerat = 0;
+        @endphp
+
         <div class="cart-scroll-box">
             <table class="shopping-cart-table table">
                 <thead>
@@ -169,40 +244,68 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @php
-                    $totalHarga = 0;
-                    $totalBerat = 0;
-                    @endphp
-
                     @foreach($order->orderItems as $item)
                     @php
+                    $tersedia = $item->tersedia ?? true;
+                    $produk = $item->produk;
+
+                    // hanya produk yang tersedia yang dihitung
+                    if ($tersedia && $produk) {
                     $totalHarga += $item->harga * $item->jumlah;
-                    $totalBerat += $item->produk->berat * $item->jumlah;
+                    $totalBerat += $produk->berat * $item->jumlah;
+                    }
                     @endphp
 
-                    <tr>
+                    <tr class="{{ $tersedia ? '' : 'item-tidak-tersedia' }}">
                         <td class="thumb">
-                            <img src="{{ asset('storage/img-produk/thumb_sm_' . $item->produk->foto) }}" alt="">
+                            @if($produk && $produk->foto)
+                            <img src="{{ asset('storage/img-produk/thumb_sm_' . $produk->foto) }}" alt="">
+                            @endif
                         </td>
                         <td class="details">
-                            <a>{{ $item->produk->nama_produk }}</a>
+                            <a>{{ $produk->nama_produk ?? $item->nama_produk }}</a>
+
+                            @if(!$tersedia)
+                            <div><span class="badge-tidak-tersedia">Produk tidak tersedia</span></div>
+                            @endif
+
+                            @if($produk)
                             <ul>
-                                <li><span>Berat: {{ $item->produk->berat }} Gram</span></li>
+                                <li><span>Berat: {{ $produk->berat }} Gram</span></li>
                             </ul>
                             <ul>
-                                <li><span>Stok: {{ $item->produk->stok }}</span></li>
+                                <li><span>Stok: {{ $produk->stok }}</span></li>
                             </ul>
+                            @endif
+
+                            @if($tersedia && ($item->harga_berubah ?? false))
+                            <div class="catatan-item">
+                                Harga {{ $item->harga > $item->harga_lama ? 'naik' : 'turun' }} dari
+                                Rp. {{ number_format($item->harga_lama, 0, ',', '.') }}
+                            </div>
+                            @endif
+
+                            @if($tersedia && ($item->jumlah_disesuaikan ?? false))
+                            <div class="catatan-item">
+                                Jumlah disesuaikan, stok tersisa {{ $item->stok_tersedia }}
+                            </div>
+                            @endif
                         </td>
                         <td class="price text-center">
+                            @if($tersedia && ($item->harga_berubah ?? false))
+                            <span class="harga-lama">Rp. {{ number_format($item->harga_lama, 0, ',', '.') }}</span>
+                            @endif
                             <strong>Rp. {{ number_format($item->harga, 0, ',', '.') }}</strong>
                         </td>
                         <td class="qty text-center">
                             <form action="{{ route('order.updateItem', $item->id) }}" method="post">
                                 @csrf
                                 @method('PATCH')
-                                <input type="number" name="jumlah" value="{{ $item->jumlah }}" min="1"
-                                    style="width: 60px;">
-                                <button type="submit" class="btn btn-sm btn-warning">Update</button>
+                                <input type="number" name="jumlah" value="{{ $item->jumlah }}" min="1" @if($tersedia &&
+                                    $produk) max="{{ $produk->stok }}" @endif style="width: 60px;"
+                                    {{ $tersedia ? '' : 'disabled' }}>
+                                <button type="submit" class="btn btn-sm btn-warning"
+                                    {{ $tersedia ? '' : 'disabled' }}>Update</button>
                             </form>
                         </td>
                         <td class="total text-center">
@@ -223,8 +326,18 @@
             </table>
         </div>
 
+        <div class="cart-subtotal">
+            Subtotal{{ $adaTidakTersedia ? ' (produk yang tersedia)' : '' }}:
+            <strong class="primary-color">Rp. {{ number_format($totalHarga, 0, ',', '.') }}</strong>
+        </div>
+
         <div class="pull-right cart-checkout">
+            @if($adaTidakTersedia)
+            <span class="primary-btn btn-nonaktif">Pilih Pengiriman</span>
+            <div class="catatan-checkout">Hapus produk yang tidak tersedia untuk melanjutkan.</div>
+            @else
             <a href="{{ route('order.formPengiriman') }}" class="primary-btn">Pilih Pengiriman</a>
+            @endif
         </div>
         @else
         <p>Keranjang belanja kosong.</p>

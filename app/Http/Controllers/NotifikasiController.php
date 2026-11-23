@@ -11,10 +11,11 @@ class NotifikasiController extends Controller
     public function index()
     {
         $user = auth()->user();
+        $role = (string) $user->role;
         $orders = [];
         $users = [];
 
-        if ($user->role === '2') {
+        if ($role === '2') {
             // Customer: lihat pesanan milik sendiri
             $pesanan = Pesanan::where('user_id', $user->id)
                 ->latest()->take(5)->get();
@@ -40,8 +41,8 @@ class NotifikasiController extends Controller
                     'link'          => $link,
                 ];
             }
-        } else {
-            // Admin: lihat semua pesanan 7 hari terakhir (tanpa filter status)
+        } elseif (in_array($role, ['0', '1'], true)) {
+            // Admin / Super Admin: semua pesanan 7 hari terakhir
             $pesanan = Pesanan::with('user')
                 ->where('created_at', '>=', now()->subDays(7))
                 ->latest()->take(5)->get();
@@ -58,7 +59,6 @@ class NotifikasiController extends Controller
                 ];
             }
 
-            // User baru (7 hari terakhir)
             $newUsers = User::where('created_at', '>=', now()->subDays(7))
                 ->latest()->take(5)->get();
 
@@ -66,10 +66,12 @@ class NotifikasiController extends Controller
                 $users[] = [
                     'nama'  => $u->nama,
                     'email' => $u->email,
-                    'role'  => $u->role === '1' ? 'Admin' : 'Customer',
+                    'role'  => (string) $u->role === '0' ? 'Super Admin' : ((string) $u->role === '1' ? 'Admin' : 'Customer'),
                     'waktu' => $u->created_at->diffForHumans(),
                 ];
             }
+        } else {
+            abort(403);
         }
 
         return response()->json([

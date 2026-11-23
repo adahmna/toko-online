@@ -42,6 +42,126 @@ class OrderController extends Controller
             ->with('error', 'Akun ini belum terdaftar sebagai customer. Silakan login dengan akun customer.');
     }
 
+    /**
+     * Produk dianggap aktif kalau statusnya "Publish".
+     * Semua pengecekan status produk di keranjang/checkout lewat fungsi ini,
+     * jadi kalau nilai status di database berbeda, cukup ubah daftar di bawah.
+     */
+    private function produkAktif(?Produk $produk): bool
+    {
+        if (!$produk) {
+            return false;
+        }
+
+        return in_array(strtolower(trim((string) $produk->status)), ['1', 'publish', 'aktif', 'active'], true);
+    }
+
+    /**
+     * Hitung ulang total keranjang. Hanya produk yang masih tersedia yang dihitung.
+     */
+    private function hitungUlangTotal(Order $order): void
+    {
+        $order->loadMissing('orderItems.produk');
+
+        $order->total_harga = $order->orderItems
+            ->filter(fn ($i) => $this->produkAktif($i->produk) && (int) $i->produk->stok > 0)
+            ->sum('subtotal');
+        $order->save();
+    }
+
+    /**
+     * Cari item keranjang, pastikan benar-benar milik customer yang login.
+     */
+    private function cariItemMilikSaya($id, $customer): OrderItem
+    {
+        return OrderItem::where('id', $id)
+            ->whereHas('order', fn ($q) => $q->where('customer_id', $customer->id))
+            ->firstOrFail();
+    }
+
+    /**
+     * Samakan isi keranjang dengan kondisi produk sekarang:
+     *  - harga mengikuti harga produk terbaru
+     *  - jumlah dibatasi stok
+     *  - produk nonaktif/stok habis ditandai tidak tersedia
+     *
+     * Setelah dipanggil, tiap item punya properti tambahan (hanya untuk tampilan, tidak disimpan):
+     *  tersedia, stok_tersedia, harga_berubah, harga_lama, jumlah_disesuaikan
+     */
+    private function sinkronkanKeranjang(Order $order): array
+    {
+        $order->load('orderItems.produk');
+
+        $hasil = [
+            'tidak_tersedia'     => 0,
+            'harga_berubah'      => 0,
+            'jumlah_disesuaikan' => 0,
+            'pesan'              => [],
+        ];
+
+        foreach ($order->orderItems as $item) {
+            $produk   = $item->produk;
+            $tersedia = $this->produkAktif($produk) && (int) $produk->stok > 0;
+
+            $hargaLama         = null;
+            $hargaBerubah      = false;
+            $jumlahDisesuaikan = false;
+
+            if ($tersedia) {
+                $hargaBaru  = $item->harga;
+                $jumlahBaru = (int) $item->jumlah;
+
+                if ((float) $item->harga !== (float) $produk->harga) {
+                    $hargaLama    = $item->harga;
+                    $hargaBaru    = $produk->harga;
+                    $hargaBerubah = true;
+                }
+
+                if ($jumlahBaru > (int) $produk->stok) {
+                    $jumlahBaru        = (int) $produk->stok;
+                    $jumlahDisesuaikan = true;
+                }
+
+                if ($hargaBerubah || $jumlahDisesuaikan) {
+                    $item->harga    = $hargaBaru;
+                    $item->jumlah   = $jumlahBaru;
+                    $item->subtotal = $hargaBaru * $jumlahBaru;
+                    $item->save();
+                }
+            }
+
+            if (!$tersedia)        $hasil['tidak_tersedia']++;
+            if ($hargaBerubah)     $hasil['harga_berubah']++;
+            if ($jumlahDisesuaikan) $hasil['jumlah_disesuaikan']++;
+
+            // properti tambahan untuk view (jangan di-save setelah ini)
+            $item->tersedia           = $tersedia;
+            $item->stok_tersedia      = $produk ? (int) $produk->stok : 0;
+            $item->harga_berubah      = $hargaBerubah;
+            $item->harga_lama         = $hargaLama;
+            $item->jumlah_disesuaikan = $jumlahDisesuaikan;
+        }
+
+        if ($hasil['tidak_tersedia'] > 0) {
+            $hasil['pesan'][] = $hasil['tidak_tersedia'] . ' produk di keranjang sudah tidak tersedia. Hapus produk tersebut untuk melanjutkan.';
+        }
+        if ($hasil['harga_berubah'] > 0) {
+            $hasil['pesan'][] = 'Harga ' . $hasil['harga_berubah'] . ' produk berubah sejak dimasukkan ke keranjang.';
+        }
+        if ($hasil['jumlah_disesuaikan'] > 0) {
+            $hasil['pesan'][] = 'Jumlah ' . $hasil['jumlah_disesuaikan'] . ' produk disesuaikan dengan stok yang tersedia.';
+        }
+
+        $this->hitungUlangTotal($order);
+
+        return $hasil;
+    }
+
+    private function adaPerubahan(array $hasil): bool
+    {
+        return ($hasil['tidak_tersedia'] + $hasil['harga_berubah'] + $hasil['jumlah_disesuaikan']) > 0;
+    }
+
     private function kembalikanStok(Pesanan $pesanan): void
     {
         foreach (PesananDetail::where('pesanan_id', $pesanan->id)->get() as $d) {
@@ -77,6 +197,11 @@ class OrderController extends Controller
 
         $produk = Produk::findOrFail($id);
 
+        // Produk nonaktif / stok habis tidak boleh masuk keranjang
+        if (!$this->produkAktif($produk) || (int) $produk->stok < 1) {
+            return redirect()->back()->with('error', 'Produk "' . $produk->nama_produk . '" sedang tidak tersedia.');
+        }
+
         $jumlahDitambah = max(1, (int) $request->input('jumlah', 1));
 
         $order = Order::firstOrCreate(
@@ -84,24 +209,38 @@ class OrderController extends Controller
             ['total_harga' => 0]
         );
 
-        $orderItem = OrderItem::firstOrCreate(
-            ['order_id' => $order->id, 'produk_id' => $produk->id],
-            [
+        $orderItem = OrderItem::where('order_id', $order->id)
+            ->where('produk_id', $produk->id)
+            ->first();
+
+        $sudahAda = $orderItem ? (int) $orderItem->jumlah : 0;
+
+        // Jumlah di keranjang tidak boleh melebihi stok
+        if ($sudahAda + $jumlahDitambah > (int) $produk->stok) {
+            $pesan = 'Stok "' . $produk->nama_produk . '" tersisa ' . (int) $produk->stok . '.';
+            if ($sudahAda > 0) {
+                $pesan .= ' Di keranjangmu sudah ada ' . $sudahAda . '.';
+            }
+            return redirect()->back()->with('error', $pesan);
+        }
+
+        if ($orderItem) {
+            $orderItem->jumlah   = $sudahAda + $jumlahDitambah;
+            $orderItem->harga    = $produk->harga; // selalu ikut harga terbaru
+            $orderItem->subtotal = $orderItem->jumlah * $orderItem->harga;
+            $orderItem->save();
+        } else {
+            OrderItem::create([
+                'order_id'    => $order->id,
+                'produk_id'   => $produk->id,
                 'nama_produk' => $produk->nama_produk,
                 'harga'       => $produk->harga,
                 'jumlah'      => $jumlahDitambah,
                 'subtotal'    => $produk->harga * $jumlahDitambah,
-            ]
-        );
-
-        if (!$orderItem->wasRecentlyCreated) {
-            $orderItem->jumlah += $jumlahDitambah;
-            $orderItem->subtotal = $orderItem->jumlah * $orderItem->harga;
-            $orderItem->save();
+            ]);
         }
 
-        $order->total_harga = $order->orderItems()->sum('subtotal');
-        $order->save();
+        $this->hitungUlangTotal($order);
 
         return redirect()->route('order.cart')->with('success', 'Produk berhasil ditambahkan ke keranjang');
     }
@@ -112,44 +251,71 @@ class OrderController extends Controller
 
         // Tidak ada data customer -> tetap tampilkan halaman keranjang (kosong), jangan error
         if (!$customer) {
-            return view('v_order.cart', ['order' => null]);
+            return view('v_order.cart', ['order' => null, 'ringkasan' => null]);
         }
 
-        $order = Order::where('customer_id', $customer->id)
+        $order     = Order::where('customer_id', $customer->id)
             ->whereIn('status', ['pending', 'paid'])
             ->first();
+        $ringkasan = null;
 
         if ($order) {
-            $order->load('orderItems.produk');
+            $ringkasan = $this->sinkronkanKeranjang($order);
+
+            // beri tahu customer kalau ada perubahan (kecuali sudah ada pesan dari redirect)
+            if ($this->adaPerubahan($ringkasan) && !session('error')) {
+                session()->now('error', implode(' ', $ringkasan['pesan']));
+            }
         }
 
-        return view('v_order.cart', compact('order'));
+        return view('v_order.cart', compact('order', 'ringkasan'));
     }
 
     public function updateItem(Request $request, $id)
     {
-        $item = OrderItem::findOrFail($id);
-        $jumlah = max(1, (int) $request->input('jumlah'));
+        $customer = $this->customerSaatIni();
+        if (!$customer) {
+            return $this->bukanCustomer();
+        }
 
-        $item->jumlah = $jumlah;
+        $item   = $this->cariItemMilikSaya($id, $customer);
+        $produk = $item->produk;
+
+        if (!$this->produkAktif($produk) || (int) $produk->stok < 1) {
+            return redirect()->route('order.cart')
+                ->with('error', 'Produk ini sudah tidak tersedia. Silakan hapus dari keranjang.');
+        }
+
+        $jumlah = max(1, (int) $request->input('jumlah'));
+        $pesan  = 'Jumlah produk berhasil diperbarui';
+
+        if ($jumlah > (int) $produk->stok) {
+            $jumlah = (int) $produk->stok;
+            $pesan  = 'Jumlah disesuaikan dengan stok yang tersedia (' . $jumlah . ').';
+        }
+
+        $item->jumlah   = $jumlah;
+        $item->harga    = $produk->harga; // ikut harga terbaru
         $item->subtotal = $item->harga * $jumlah;
         $item->save();
 
-        $order = $item->order;
-        $order->total_harga = $order->orderItems()->sum('subtotal');
-        $order->save();
+        $this->hitungUlangTotal($item->order);
 
-        return redirect()->route('order.cart')->with('success', 'Jumlah produk berhasil diperbarui');
+        return redirect()->route('order.cart')->with('success', $pesan);
     }
 
     public function removeItem($id)
     {
-        $item = OrderItem::findOrFail($id);
+        $customer = $this->customerSaatIni();
+        if (!$customer) {
+            return $this->bukanCustomer();
+        }
+
+        $item  = $this->cariItemMilikSaya($id, $customer);
         $order = $item->order;
         $item->delete();
 
-        $order->total_harga = $order->orderItems()->sum('subtotal');
-        $order->save();
+        $this->hitungUlangTotal($order);
 
         return redirect()->route('order.cart')->with('success', 'Produk berhasil dihapus dari keranjang');
     }
@@ -172,7 +338,11 @@ class OrderController extends Controller
             return redirect()->route('order.cart')->with('error', 'Keranjang belanja kosong.');
         }
 
-        $order->load('orderItems.produk');
+        // Pastikan isi keranjang masih valid; kalau ada perubahan, kembali ke keranjang dulu
+        $ringkasan = $this->sinkronkanKeranjang($order);
+        if ($this->adaPerubahan($ringkasan)) {
+            return redirect()->route('order.cart')->with('error', implode(' ', $ringkasan['pesan']));
+        }
 
         $totalBerat = 0;
         foreach ($order->orderItems as $item) {
@@ -216,7 +386,11 @@ class OrderController extends Controller
             return redirect()->route('order.cart')->with('error', 'Keranjang belanja kosong.');
         }
 
-        $order->load('orderItems.produk');
+        // Pastikan isi keranjang masih valid; kalau ada perubahan, kembali ke keranjang dulu
+        $ringkasan = $this->sinkronkanKeranjang($order);
+        if ($this->adaPerubahan($ringkasan)) {
+            return redirect()->route('order.cart')->with('error', implode(' ', $ringkasan['pesan']));
+        }
 
         $subtotal = $order->total_harga;
         $ongkir   = (float) $request->ongkir;
@@ -241,7 +415,7 @@ class OrderController extends Controller
      * Simpan pesanan ke database lalu lanjut ke halaman pembayaran
      * (proses pembayaran dengan timer — TIDAK DIUBAH).
      *
-     * Cek stok, buat pesanan, dan kurangi stok dilakukan dalam satu transaksi
+     * Cek produk aktif, stok, dan harga; buat pesanan; kurangi stok. Semuanya dalam satu transaksi
      * dengan lockForUpdate() supaya tidak terjadi overselling.
      */
     public function pilihPengiriman(Request $request)
@@ -271,20 +445,37 @@ class OrderController extends Controller
 
         try {
             $pesanan = DB::transaction(function () use ($order, $request) {
-                // Kunci baris produk & cek stok
+                $subtotal = 0;
+
+                // Kunci baris produk & validasi: masih aktif, stok cukup, harga belum berubah
                 foreach ($order->orderItems as $item) {
                     $produk = Produk::where('id', $item->produk_id)->lockForUpdate()->first();
-                    if (!$produk || $produk->stok < $item->jumlah) {
+
+                    if (!$this->produkAktif($produk)) {
+                        throw new \RuntimeException(
+                            'Produk "' . $item->nama_produk . '" sudah tidak tersedia. Hapus dari keranjang untuk melanjutkan.'
+                        );
+                    }
+
+                    if ($produk->stok < $item->jumlah) {
                         throw new \RuntimeException(
                             'Stok produk "' . $item->nama_produk . '" tidak mencukupi. Sisa stok: ' . ($produk->stok ?? 0)
                         );
                     }
+
+                    if ((float) $produk->harga !== (float) $item->harga) {
+                        throw new \RuntimeException(
+                            'Harga produk "' . $item->nama_produk . '" berubah menjadi Rp ' . number_format($produk->harga, 0, ',', '.') . '. Periksa kembali keranjang Anda.'
+                        );
+                    }
+
+                    $subtotal += $item->harga * $item->jumlah;
                 }
 
                 $pesanan = Pesanan::create([
                     'user_id'           => Auth::id(),
                     'kode_pesanan'      => 'TRX-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
-                    'total_harga'       => $order->total_harga + $request->ongkir,
+                    'total_harga'       => $subtotal + $request->ongkir,
                     'ongkir'            => $request->ongkir,
                     'kota_tujuan'       => $request->kota_tujuan,
                     'id_kota_tujuan'    => $request->id_kota_tujuan,
@@ -302,7 +493,7 @@ class OrderController extends Controller
                         'nama_produk' => $item->nama_produk,
                         'harga'       => $item->harga,
                         'jumlah'      => $item->jumlah,
-                        'subtotal'    => $item->subtotal,
+                        'subtotal'    => $item->harga * $item->jumlah,
                     ]);
 
                     // Kurangi stok sesuai jumlah yang dipesan

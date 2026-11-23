@@ -58,6 +58,7 @@ class LiveChatController extends Controller
         'Metode pembayaran apa saja?'            => 'bayar',
         'Apakah produk masih tersedia?'          => 'stok',
         'Bagaimana jika barang rusak atau tidak sesuai?' => 'rusak',
+        'Chat dengan penjual'                    => 'penjual',
     ];
     // SESUAIKAN isi jawaban di bawah dengan kebijakan toko kamu
     private const GENERAL_FAQ_ANSWERS = [
@@ -77,6 +78,9 @@ class LiveChatController extends Controller
         ],
         'stok' => [
             'Stok dan detail produk bisa dilihat di halaman produknya. Untuk produk tertentu, kirim produknya lewat tombol tas belanja di chat ini dan tulis pertanyaan Anda, admin akan membantu mengecek.',
+        ],
+        'penjual' => [
+            'Baik, Anda terhubung dengan penjual. Silakan tulis pertanyaan Anda di kolom chat di bawah, penjual akan membalas secepatnya.',
         ],
         'rusak' => [
             'Jika barang yang diterima rusak atau tidak sesuai, simpan kemasannya dan foto atau video barang. Setelah Anda memiliki pesanan, pengajuan pengembalian dana bisa dilakukan lewat chat ini.',
@@ -116,7 +120,12 @@ class LiveChatController extends Controller
 
         $conv = $this->customerConv($request, false);
 
-        // tamu yang belum pernah kirim pesan: belum ada percakapan
+        // tamu yang baru membuka widget: buatkan percakapan (tersembunyi dari admin) supaya sapaan & FAQ bisa disimpan
+        if ($conv === null && $request->boolean('open') && $this->guestToken($request)) {
+            $conv = $this->customerConv($request, true);
+        }
+
+        // tamu tanpa token / belum membuka widget: belum ada percakapan
         if ($conv === null) {
             return response()->json([
                 'messages' => [],
@@ -279,7 +288,7 @@ class LiveChatController extends Controller
     // pertanyaan FAQ / chip yang dikenali bot (teks harus persis sama dengan yang di livechat.js)
     private function faqKey(Request $request, string $role, int $conv, string $text): ?string
     {
-        if ($role !== 'customer' || $conv <= 0 || $text === '') {
+        if ($role !== 'customer' || $conv === 0 || $text === '') {
             return null;
         }
         if ($request->hasFile('file') || $request->filled('product_id') || $request->filled('reply_to_id')) {
@@ -314,8 +323,8 @@ class LiveChatController extends Controller
         $make = function (string $type, string $text, $pesananId = null) use ($conv, $hide) {
             $m = new ChatMessage();
             $m->forceFill([
-                'customer_id'  => $conv,
-                'guest_id'     => null,
+                'customer_id'  => $conv > 0 ? $conv : null,
+                'guest_id'     => $conv < 0 ? -$conv : null,
                 'sender'       => 'admin',
                 'admin_id'     => null, // pesan bot
                 'message'      => $text,
@@ -326,10 +335,26 @@ class LiveChatController extends Controller
             ])->save();
         };
 
+        if ($key === 'penjual') {
+            if ($this->diLuarJamOperasional()) {
+                $make('bot_reply', 'Saat ini di luar jam operasional toko (07:00 - 22:00 WIB), jadi penjual belum bisa membalas sekarang. Silakan tetap tulis pesan Anda di kolom chat, kami balas ketika toko sudah buka.');
+            } else {
+                $make('bot_reply', 'Baik, Anda terhubung dengan penjual. Silakan tulis pertanyaan Anda di kolom chat di bawah, penjual akan membalas secepatnya.');
+                $this->autoReply($conv); // pemberitahuan kalau admin sedang offline
+            }
+            return;
+        }
+
         if (isset(self::GENERAL_FAQ_ANSWERS[$key])) {
             foreach (self::GENERAL_FAQ_ANSWERS[$key] as $t) {
                 $make('bot_reply', $t);
             }
+            return;
+        }
+
+        // tamu belum punya akun/pesanan: pertanyaan seputar pesanan diarahkan untuk login
+        if ($conv < 0) {
+            $make('bot_reply', 'Untuk informasi pesanan (status, alamat, pembatalan, atau pengembalian dana), silakan login terlebih dahulu ke akun Anda, lalu tanyakan lagi lewat chat ini.');
             return;
         }
 
@@ -481,7 +506,7 @@ class LiveChatController extends Controller
             return;
         }
 
-        $recent = ChatMessage::where('customer_id', $conv)
+        $recent = $this->inConv(ChatMessage::query(), $conv)
             ->where('type', 'bot_text')
             ->where('created_at', '>=', now()->subHours(self::WELCOME_HOURS))
             ->exists();
@@ -492,8 +517,8 @@ class LiveChatController extends Controller
         $make = function (array $extra) use ($conv) {
             $m = new ChatMessage();
             $m->forceFill(array_merge([
-                'customer_id'  => $conv,
-                'guest_id'     => null,
+                'customer_id'  => $conv > 0 ? $conv : null,
+                'guest_id'     => $conv < 0 ? -$conv : null,
                 'sender'       => 'admin',
                 'admin_id'     => null,
                 'is_read'      => 0,
@@ -1135,7 +1160,7 @@ class LiveChatController extends Controller
         $open  = $role === 'admin' ? true : $request->boolean('open');
 
         $didReset = ($role === 'customer') ? $this->maybeResetAfterOrder($conv) : false;
-        if ($role === 'customer' && $open && $conv > 0) {
+        if ($role === 'customer' && $open && $conv !== 0) {
             $this->maybeWelcome($conv);
         }
 
@@ -1201,6 +1226,16 @@ class LiveChatController extends Controller
             return response()->json([
                 'message' => self::DELETED_NAME . ', tidak bisa dibalas.',
             ], 403);
+        }
+
+        // tamu (belum login, conv < 0) hanya boleh kirim teks; tanpa file, foto, suara, produk
+        if ($role === 'customer' && $conv < 0) {
+            // guest-voice-ok: tamu boleh voice note saja
+            if (($request->hasFile('file') && (!$request->boolean('voice') || !in_array(strtolower($request->file('file')->getClientOriginalExtension()), ['webm','ogg','opus','m4a','mp3','wav','aac'], true))) || $request->filled('product_id')) {
+                return response()->json([
+                    'message' => 'Silakan login untuk mengirim foto, file, atau produk.',
+                ], 403);
+            }
         }
 
         $request->validate([
@@ -1301,6 +1336,13 @@ class LiveChatController extends Controller
         }
 
         return response()->json(['message' => $this->formatMany([$msg])[0]]);
+    }
+
+    // true kalau sekarang di luar jam operasional toko (07:00 - 22:00 WIB)
+    private function diLuarJamOperasional(): bool
+    {
+        $jam = (int) now('Asia/Jakarta')->format('G');
+        return $jam < 7 || $jam >= 22;
     }
 
     // balasan otomatis setiap kali customer/tamu mengirim pesan saat admin offline

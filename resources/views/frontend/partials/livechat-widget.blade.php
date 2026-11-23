@@ -37,6 +37,74 @@
 }
 </style>
 
+@guest
+{{-- guest-final --}}
+<script>
+(function () {
+    function terapkan() {
+        var comp = document.querySelector('#lcwRoot [data-lc="composer"]');
+        if (!comp) return;
+
+        comp.querySelectorAll('input[type=file]').forEach(function (f) { f.disabled = true; });
+
+        var els = Array.prototype.slice.call(comp.querySelectorAll('button, label, a, [role=button]'));
+        var emoji = els.find(function (b) {
+            var t = ((typeof b.className === 'string' ? b.className : '') + ' ' + b.id + ' ' + (b.title || '') + ' ' + (b.getAttribute('aria-label') || '')).toLowerCase();
+            return /emoji|smile/.test(t) || b.textContent.indexOf('\u{1F60A}') !== -1;
+        });
+        if (!emoji) return;
+
+        // semua tombol yang letaknya sebelum emoji (= klip) disembunyikan
+        els.forEach(function (b) {
+            if (b === emoji || b.contains(emoji) || emoji.contains(b)) return;
+            if (b.compareDocumentPosition(emoji) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                b.style.setProperty('display', 'none', 'important');
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        terapkan();
+        new MutationObserver(terapkan).observe(document.body, { childList: true, subtree: true });
+    });
+})();
+</script>
+@endguest
+
+@guest
+{{-- guest-emoji-rapih --}}
+<script>
+(function () {
+    function rapikan() {
+        var comp = document.querySelector('#lcwRoot [data-lc="composer"]');
+        if (!comp) return;
+        var box = comp.querySelector('textarea, input[type=text], input:not([type])');
+        if (!box || !box.offsetHeight) return;
+
+        var els = Array.prototype.slice.call(comp.querySelectorAll('button, label, [role=button]'));
+        var emoji = els.find(function (b) {
+            var t = ((typeof b.className === 'string' ? b.className : '') + ' ' + b.id + ' ' + (b.title || '') + ' ' + (b.getAttribute('aria-label') || '')).toLowerCase();
+            return /emoji|smile/.test(t) || b.textContent.indexOf('\u{1F60A}') !== -1;
+        });
+        if (!emoji || !emoji.offsetHeight) return;
+
+        emoji.style.transform = '';
+        var rb = box.getBoundingClientRect();
+        var re = emoji.getBoundingClientRect();
+        var selisih = (rb.top + rb.height / 2) - (re.top + re.height / 2);
+        if (Math.abs(selisih) > 1) emoji.style.transform = 'translateY(' + selisih.toFixed(1) + 'px)';
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        rapikan();
+        setTimeout(rapikan, 300);
+        setTimeout(rapikan, 1200);
+        window.addEventListener('resize', rapikan);
+        document.addEventListener('input', rapikan, true);
+        document.addEventListener('click', function () { setTimeout(rapikan, 50); }, true);
+    });
+})();
+</script>
+@endguest
+
 <div id="lcw">
     <button type="button" class="lcw-fab" id="lcwFab" aria-label="Buka chat dengan admin">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -124,9 +192,11 @@
             send: function() {
                 return withGuest(U.send);
             },
-            products: function(q) {
+            @auth
+products: function(q) {
                 return withGuest(U.products + '?q=' + encodeURIComponent(q || ''));
             },
+@endauth
             edit: function(id) {
                 return withGuest(U.edit.replace('__ID__', id));
             },

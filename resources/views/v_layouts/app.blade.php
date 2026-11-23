@@ -711,6 +711,20 @@
         }
     }
     </style>
+<style id="deskripsi-justify">
+/* deskripsi produk rata kanan-kiri */
+.product-details p,
+.product-details p *,
+.product-body p,
+.product-body p * {
+    text-align: justify !important;
+    text-justify: inter-word;
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+}
+</style>
 </head>
 
 <body data-user="{{ auth()->check() ? (auth()->user()->nama ?? auth()->user()->name ?? '') : '' }}">
