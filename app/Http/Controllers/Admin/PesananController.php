@@ -47,31 +47,80 @@ class PesananController extends Controller
             'kode_pos'          => 'nullable|string|max:20',
         ]);
 
-        $pesanan         = Pesanan::findOrFail($id);
-        $pesanan->status = $request->status_pesanan;
+        $statusBaru = (string) $request->status_pesanan;
+        $gagalRegex = '/batal|cancel|gagal|expire|kedaluwarsa|kadaluarsa|kadaluwarsa/i';
 
-        // Simpan data ekspedisi hanya jika status = dikirim
-        if (strtolower($request->status_pesanan) === 'dikirim') {
-            if ($request->filled('ekspedisi')) {
-                $pesanan->ekspedisi = $request->ekspedisi;
+        try {
+            $pesanan = \Illuminate\Support\Facades\DB::transaction(function () use ($request, $id, $statusBaru, $gagalRegex) {
+                $pesanan = Pesanan::where('id', $id)->lockForUpdate()->firstOrFail();
+
+                $lamaGagal = (bool) preg_match($gagalRegex, (string) $pesanan->status);
+                $baruGagal = (bool) preg_match($gagalRegex, $statusBaru);
+
+                if ($lamaGagal && !$baruGagal) {
+                    throw new \RuntimeException(
+                        'Pesanan berstatus "' . $pesanan->status . '" sudah dikembalikan stoknya, jadi tidak bisa diaktifkan lagi. Minta customer membuat pesanan baru.'
+                    );
+                }
+
+                // simpan status lama SEBELUM ditimpa, untuk mendeteksi perpindahan status
+                $statusLamaNorm = strtolower(trim((string) $pesanan->status));
+                $statusBaruNorm = strtolower(trim($statusBaru));
+
+                $pesanan->status = $statusBaru;
+
+                // Catat waktu kirim: hanya saat BARU berpindah ke "Dikirim"
+                if ($statusBaruNorm === 'dikirim' && $statusLamaNorm !== 'dikirim') {
+                    $pesanan->dikirim_at = now();
+                    $pesanan->tiba_at    = null;
+                }
+
+                // Catat waktu tiba: hanya saat BARU berpindah ke "Tiba"
+                if ($statusBaruNorm === 'tiba' && $statusLamaNorm !== 'tiba') {
+                    $pesanan->tiba_at = now();
+                    if (!$pesanan->dikirim_at) {
+                        $pesanan->dikirim_at = now();
+                    }
+                }
+
+                // Simpan data ekspedisi hanya jika status = dikirim
+                if (strtolower($statusBaru) === 'dikirim') {
+                    if ($request->filled('ekspedisi')) {
+                        $pesanan->ekspedisi = $request->ekspedisi;
+                    }
+                    if ($request->filled('layanan_ekspedisi')) {
+                        $pesanan->layanan_ekspedisi = $request->layanan_ekspedisi;
+                    }
+                    $pesanan->no_resi = $request->no_resi;
+                }
+
+                // Alamat & kode pos bisa dikoreksi dari halaman detail
+                if ($request->filled('alamat')) {
+                    $pesanan->alamat = $request->alamat;
+                }
+                if ($request->filled('kode_pos')) {
+                    $pesanan->kode_pos = $request->kode_pos;
+                }
+
+                $pesanan->save();
+
+                // Aktif -> dibatalkan/kedaluwarsa: kembalikan stok (sekali saja)
+                if (!$lamaGagal && $baruGagal) {
+                    foreach (\App\Models\PesananDetail::where('pesanan_id', $pesanan->id)->get() as $d) {
+                        \App\Models\Produk::where('id', $d->produk_id)->increment('stok', $d->jumlah);
+                    }
+                }
+
+                return $pesanan;
+            });
+        } catch (\RuntimeException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
             }
-            if ($request->filled('layanan_ekspedisi')) {
-                $pesanan->layanan_ekspedisi = $request->layanan_ekspedisi;
-            }
-            $pesanan->no_resi = $request->no_resi;
+            return redirect()->back()->with('error', $e->getMessage());
         }
 
-        // Alamat & kode pos bisa dikoreksi dari halaman detail
-        if ($request->filled('alamat')) {
-            $pesanan->alamat = $request->alamat;
-        }
-        if ($request->filled('kode_pos')) {
-            $pesanan->kode_pos = $request->kode_pos;
-        }
-
-        $pesanan->save();
-
-        // Kirim email notifikasi setelah response dikirim ke browser (non-blocking)
+        // Kirim email notifikasi
         if ($pesanan->user && $pesanan->user->email) {
             $email = $pesanan->user->email;
             $mail  = new StatusPesananMail($pesanan);
@@ -83,7 +132,7 @@ class PesananController extends Controller
             }
         }
 
-        // Dipanggil lewat AJAX (modal index lama) → balikin JSON
+        // Dipanggil lewat AJAX (modal index lama) -> balikin JSON
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
                 'success' => true,
@@ -91,7 +140,7 @@ class PesananController extends Controller
             ]);
         }
 
-        // Dipanggil lewat form biasa (halaman detail) → redirect kembali
+        // Dipanggil lewat form biasa (halaman detail) -> redirect kembali
         return redirect()
             ->route('admin.pesanan.detail', $pesanan->id)
             ->with('success', 'Status pesanan berhasil diperbarui dan email notifikasi telah dikirim!');
@@ -126,7 +175,7 @@ class PesananController extends Controller
         return response()->json($res);
     }
 
-    public function beriRatingLogistik(\Illuminate\Http\Request $request, $id)
+    public function beriRatingLogistik(Request $request, $id)
     {
         $request->validate([
             'rating' => 'required|integer|min:1|max:5',
@@ -190,13 +239,13 @@ class PesananController extends Controller
         }
 
         try {
-            $resp = \Illuminate\Support\Facades\Http::timeout(10)->get('https://api.binderbyte.com/v1/track', [
+            $resp = Http::timeout(10)->get('https://api.binderbyte.com/v1/track', [
                 'api_key' => config('services.binderbyte.api_key'),
                 'courier' => $kurir,
                 'awb'     => $resi,
             ]);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[Tracking] Binderbyte tidak terjangkau: ' . $e->getMessage());
+            Log::warning('[Tracking] Binderbyte tidak terjangkau: ' . $e->getMessage());
             return $dasar + [
                 'tersedia' => false,
                 'pesan'    => 'Layanan pelacakan sedang tidak bisa dihubungi. Coba lagi nanti atau cek di website ekspedisi.',
@@ -207,7 +256,7 @@ class PesananController extends Controller
 
         if (!$resp->ok() || (int) ($json['status'] ?? 0) !== 200) {
             $apiMsg = (string) ($json['message'] ?? '');
-            \Illuminate\Support\Facades\Log::error('[Tracking] Binderbyte gagal ' . $kurir . '/' . $resi . ': HTTP ' . $resp->status() . ' ' . $apiMsg);
+            Log::error('[Tracking] Binderbyte gagal ' . $kurir . '/' . $resi . ': HTTP ' . $resp->status() . ' ' . $apiMsg);
 
             $tidakKetemu = (bool) preg_match('/not found|tidak ditemukan|invalid/i', $apiMsg);
             return $dasar + [
@@ -392,7 +441,7 @@ class PesananController extends Controller
         usleep(1100000); // Nominatim: maksimal 1 permintaan per detik
 
         try {
-            $r = \Illuminate\Support\Facades\Http::timeout(8)
+            $r = Http::timeout(8)
                 ->withHeaders(['User-Agent' => 'TokoOnlineBSI/1.0 (proyek kuliah)'])
                 ->get('https://nominatim.openstreetmap.org/search', [
                     'q'            => $q . ', Indonesia',
@@ -412,7 +461,7 @@ class PesananController extends Controller
                 \Illuminate\Support\Facades\Cache::put($key, 'miss', now()->addDay());
             }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('[Geocode] ' . $e->getMessage());
+            Log::warning('[Geocode] ' . $e->getMessage());
         }
 
         return null;
@@ -435,7 +484,7 @@ class PesananController extends Controller
         return $map[$e] ?? $e;
     }
 
-    public function uploadFotoBukti(\Illuminate\Http\Request $request, $id)
+    public function uploadFotoBukti(Request $request, $id)
     {
         $request->validate([
             'foto'       => 'required|image|mimes:jpg,jpeg,png,webp|max:3072',
@@ -460,4 +509,5 @@ class PesananController extends Controller
         $foto->delete();
 
         return back()->with('success', 'Foto bukti dihapus.');
-    }}
+    }
+}

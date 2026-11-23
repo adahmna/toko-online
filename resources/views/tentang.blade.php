@@ -548,6 +548,29 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 
+
+{{-- ===== TEKS KECIL RATA KANAN-KIRI ===== --}}
+<style>
+    .pk-hero p,
+    .pk-section .pk-lede,
+    .pk-flow-step p,
+    .pk-langkah p,
+    .pk-kondisi-box li,
+    .pk-refund-note p,
+    .pk-tip p,
+    .pk-faq details p,
+    .tk-hero p,
+    .tk-hero-aside,
+    .tk-story-text p,
+    .tk-timeline p,
+    .tk-value p {
+        text-align: justify !important;
+        text-justify: inter-word;
+    }
+    /* teks di kartu CTA tetap rata tengah */
+    .pk-cta p, .tk-cta p { text-align: center !important; }
+</style>
+{{-- ===== END TEKS KECIL RATA KANAN-KIRI ===== --}}
 @endsection
 
 

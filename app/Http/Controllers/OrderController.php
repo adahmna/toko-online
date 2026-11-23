@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\Customer;
 use App\Models\Produk;
@@ -46,6 +47,25 @@ class OrderController extends Controller
         foreach (PesananDetail::where('pesanan_id', $pesanan->id)->get() as $d) {
             Produk::where('id', $d->produk_id)->increment('stok', $d->jumlah);
         }
+    }
+
+    /**
+     * Ubah status pesanan ke status gagal (Kadaluarsa/Dibatalkan) dan kembalikan stok
+     * secara atomik. Baris pesanan dikunci supaya callback() dan selesaiMidtrans()
+     * yang berjalan hampir bersamaan tidak mengembalikan stok dua kali.
+     */
+    private function ubahStatusDanKembalikanStok(int $pesananId, string $statusBaru): void
+    {
+        DB::transaction(function () use ($pesananId, $statusBaru) {
+            $pesanan = Pesanan::where('id', $pesananId)->lockForUpdate()->first();
+
+            if (!$pesanan || !in_array($pesanan->status, ['Menunggu Pembayaran', 'Paid'])) {
+                return;
+            }
+
+            $pesanan->update(['status' => $statusBaru]);
+            $this->kembalikanStok($pesanan);
+        });
     }
 
     public function addToCart(Request $request, $id)
@@ -220,6 +240,9 @@ class OrderController extends Controller
     /**
      * Simpan pesanan ke database lalu lanjut ke halaman pembayaran
      * (proses pembayaran dengan timer — TIDAK DIUBAH).
+     *
+     * Cek stok, buat pesanan, dan kurangi stok dilakukan dalam satu transaksi
+     * dengan lockForUpdate() supaya tidak terjadi overselling.
      */
     public function pilihPengiriman(Request $request)
     {
@@ -246,47 +269,54 @@ class OrderController extends Controller
             return redirect()->route('order.cart')->with('error', 'Keranjang belanja kosong.');
         }
 
-        // Cek stok dulu sebelum pesanan dibuat
-        foreach ($order->orderItems as $item) {
-            $stokSekarang = (int) Produk::where('id', $item->produk_id)->value('stok');
-            if ($stokSekarang < $item->jumlah) {
-                return redirect()->route('order.cart')
-                    ->with('error', 'Stok produk "' . $item->nama_produk . '" tidak mencukupi. Sisa stok: ' . $stokSekarang);
-            }
+        try {
+            $pesanan = DB::transaction(function () use ($order, $request) {
+                // Kunci baris produk & cek stok
+                foreach ($order->orderItems as $item) {
+                    $produk = Produk::where('id', $item->produk_id)->lockForUpdate()->first();
+                    if (!$produk || $produk->stok < $item->jumlah) {
+                        throw new \RuntimeException(
+                            'Stok produk "' . $item->nama_produk . '" tidak mencukupi. Sisa stok: ' . ($produk->stok ?? 0)
+                        );
+                    }
+                }
+
+                $pesanan = Pesanan::create([
+                    'user_id'           => Auth::id(),
+                    'kode_pesanan'      => 'TRX-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
+                    'total_harga'       => $order->total_harga + $request->ongkir,
+                    'ongkir'            => $request->ongkir,
+                    'kota_tujuan'       => $request->kota_tujuan,
+                    'id_kota_tujuan'    => $request->id_kota_tujuan,
+                    'alamat'            => $request->alamat,
+                    'kode_pos'          => $request->kode_pos,
+                    'ekspedisi'         => $request->ekspedisi,
+                    'layanan_ekspedisi' => $request->layanan,
+                    'status'            => 'Menunggu Pembayaran',
+                ]);
+
+                foreach ($order->orderItems as $item) {
+                    PesananDetail::create([
+                        'pesanan_id'  => $pesanan->id,
+                        'produk_id'   => $item->produk_id,
+                        'nama_produk' => $item->nama_produk,
+                        'harga'       => $item->harga,
+                        'jumlah'      => $item->jumlah,
+                        'subtotal'    => $item->subtotal,
+                    ]);
+
+                    // Kurangi stok sesuai jumlah yang dipesan
+                    Produk::where('id', $item->produk_id)->decrement('stok', $item->jumlah);
+                }
+
+                $order->orderItems()->delete();
+                $order->delete();
+
+                return $pesanan;
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()->route('order.cart')->with('error', $e->getMessage());
         }
-
-        $pesanan = Pesanan::create([
-            'user_id'           => Auth::id(),
-            'kode_pesanan'      => 'TRX-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
-            'total_harga'       => $order->total_harga + $request->ongkir,
-            'ongkir'            => $request->ongkir,
-            'kota_tujuan'       => $request->kota_tujuan,
-            'id_kota_tujuan'    => $request->id_kota_tujuan,
-            'alamat'            => $request->alamat,
-            'kode_pos'          => $request->kode_pos,
-            'ekspedisi'         => $request->ekspedisi,
-            'layanan_ekspedisi' => $request->layanan,
-            'status'            => 'Menunggu Pembayaran',
-        ]);
-
-        foreach ($order->orderItems as $item) {
-            PesananDetail::create([
-                'pesanan_id'  => $pesanan->id,
-                'produk_id'   => $item->produk_id,
-                'nama_produk' => $item->nama_produk,
-                'harga'       => $item->harga,
-                'jumlah'      => $item->jumlah,
-                'subtotal'    => $item->subtotal,
-            ]);
-        }
-
-        // Kurangi stok sesuai jumlah yang dipesan
-        foreach ($order->orderItems as $item) {
-            Produk::where('id', $item->produk_id)->decrement('stok', $item->jumlah);
-        }
-
-        $order->orderItems()->delete();
-        $order->delete();
 
         // Lanjut ke halaman pembayaran (timer VA) — TIDAK DIUBAH.
         return redirect()->route('customer.checkout.pembayaran', $pesanan->id);
@@ -360,16 +390,21 @@ class OrderController extends Controller
         $serverKey = config('midtrans.server_key');
         $hashed = hash('sha512', $request->order_id . $request->status_code . $request->gross_amount . $serverKey);
 
-        if ($hashed == $request->signature_key) {
-            $pesanan = Pesanan::where('midtrans_order_id', $request->order_id)->orWhere('kode_pesanan', $request->order_id)->first();
+        if (hash_equals($hashed, (string) $request->signature_key)) {
+            $pesanan = Pesanan::where('midtrans_order_id', $request->order_id)
+                ->orWhere('kode_pesanan', $request->order_id)
+                ->first();
 
             if ($pesanan && in_array($pesanan->status, ['Menunggu Pembayaran', 'Paid'])) {
-                if ($request->transaction_status == 'settlement' || $request->transaction_status == 'capture') {
+                $trx   = $request->transaction_status;
+                $fraud = $request->fraud_status ?? null;
+
+                if ($trx === 'settlement' || ($trx === 'capture' && $fraud !== 'challenge')) {
                     $pesanan->update(['status' => 'Proses']);
-                } elseif ($request->transaction_status == 'expire') {
-                    $pesanan->update(['status' => 'Kadaluarsa']); $this->kembalikanStok($pesanan);
-                } elseif ($request->transaction_status == 'cancel' || $request->transaction_status == 'deny') {
-                    $pesanan->update(['status' => 'Dibatalkan']); $this->kembalikanStok($pesanan);
+                } elseif ($trx === 'expire') {
+                    $this->ubahStatusDanKembalikanStok($pesanan->id, 'Kadaluarsa');
+                } elseif ($trx === 'cancel' || $trx === 'deny') {
+                    $this->ubahStatusDanKembalikanStok($pesanan->id, 'Dibatalkan');
                 }
             }
         }
@@ -398,7 +433,7 @@ class OrderController extends Controller
         Config::$isProduction = config('midtrans.is_production');
 
         try {
-            $status = \Midtrans\Transaction::status($idMidtrans);
+            $status = (object) \Midtrans\Transaction::status($idMidtrans);
             $trx    = $status->transaction_status ?? null;
             $fraud  = $status->fraud_status ?? null;
 
@@ -406,9 +441,9 @@ class OrderController extends Controller
                 if ($trx === 'settlement' || ($trx === 'capture' && $fraud !== 'challenge')) {
                     $pesanan->update(['status' => 'Proses']);
                 } elseif ($trx === 'expire') {
-                    $pesanan->update(['status' => 'Kadaluarsa']); $this->kembalikanStok($pesanan);
+                    $this->ubahStatusDanKembalikanStok($pesanan->id, 'Kadaluarsa');
                 } elseif ($trx === 'cancel' || $trx === 'deny') {
-                    $pesanan->update(['status' => 'Dibatalkan']); $this->kembalikanStok($pesanan);
+                    $this->ubahStatusDanKembalikanStok($pesanan->id, 'Dibatalkan');
                 }
             }
         } catch (\Throwable $e) {

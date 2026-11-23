@@ -40,11 +40,16 @@ class Pesanan extends Model
         'layanan_ekspedisi',
         'no_resi',
         'snap_token',
+        'midtrans_order_id',
+        'dikirim_at',
+        'tiba_at',
     ];
 
     protected $casts = [
         'batas_pembayaran' => 'datetime',
         'is_read'          => 'boolean',
+        'dikirim_at'       => 'datetime',
+        'tiba_at'          => 'datetime',
     ];
 
     public function user()
@@ -88,4 +93,5 @@ class Pesanan extends Model
     public function fotoBukti()
     {
         return $this->hasMany(\App\Models\PesananFotoBukti::class, 'pesanan_id')->latest();
-    }}
+    }
+}

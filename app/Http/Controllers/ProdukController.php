@@ -33,17 +33,20 @@ class ProdukController extends Controller
 
     public function store(Request $request)
     {
+        $this->normalisasiHargaBerat($request);
         $validatedData = $request->validate([
             'kategori_id' => 'required',
             'nama_produk' => 'required|max:255|unique:produk',
             'detail'      => 'required',
-            'harga'       => 'required',
-            'berat'       => 'required',
-            'stok'        => 'required',
+            'harga'       => 'required|numeric|min:0',
+            'berat'       => 'required|numeric|gt:0',
+            'stok'        => 'required|integer|min:0',
             'foto'        => 'required|image|mimes:jpeg,jpg,png,gif|file|max:1024',
         ], [
             'foto.image' => 'Format gambar gunakan file dengan ekstensi jpeg, jpg, png, atau gif.',
             'foto.max'   => 'Ukuran file gambar Maksimal adalah 1024 KB.',
+            'stok.integer' => 'Stok harus berupa angka bulat.',
+            'stok.min'     => 'Stok tidak boleh negatif.',
         ]);
 
         $validatedData['user_id'] = auth()->id();
@@ -116,17 +119,20 @@ class ProdukController extends Controller
             'kategori_id' => 'required',
             'status'      => 'required',
             'detail'      => 'required',
-            'harga'       => 'required',
-            'berat'       => 'required',
-            'stok'        => 'required',
+            'harga'       => 'required|numeric|min:0',
+            'berat'       => 'required|numeric|gt:0',
+            'stok'        => 'required|integer|min:0',
             'foto'        => 'image|mimes:jpeg,jpg,png,gif|file|max:1024',
         ];
 
         $messages = [
             'foto.image' => 'Format gambar gunakan file dengan ekstensi jpeg, jpg, png, atau gif.',
             'foto.max'   => 'Ukuran file gambar Maksimal adalah 1024 KB.',
+            'stok.integer' => 'Stok harus berupa angka bulat.',
+            'stok.min'     => 'Stok tidak boleh negatif.',
         ];
 
+        $this->normalisasiHargaBerat($request);
         $validatedData = $request->validate($rules, $messages);
         $validatedData['user_id'] = auth()->id();
 
@@ -344,5 +350,34 @@ class ProdukController extends Controller
             'kategori' => $kategori,
             'produk'   => $produk,
         ]);
+    }
+
+    /**
+     * Ubah input harga (IDR/USD) jadi Rupiah dan berat (satuan apa pun) jadi gram.
+     */
+    private function normalisasiHargaBerat(Request $request): void
+    {
+        $kurs   = (float) config('kurs.usd_idr', 16000);
+        $faktor = ['mg' => 0.001, 'g' => 1, 'ons' => 100, 'kg' => 1000, 'oz' => 28.3495, 'lb' => 453.592, 'ton' => 1000000];
+        $merge  = [];
+
+        $h = str_replace(',', '.', trim((string) $request->input('harga_nilai', '')));
+        if ($h !== '' && is_numeric($h)) {
+            $v = (float) $h;
+            if ($request->input('harga_mata_uang') === 'USD') {
+                $v *= $kurs;
+            }
+            $merge['harga'] = (int) round($v);
+        }
+
+        $b = str_replace(',', '.', trim((string) $request->input('berat_nilai', '')));
+        if ($b !== '' && is_numeric($b)) {
+            $satuan = $request->input('berat_satuan', 'g');
+            $merge['berat'] = round((float) $b * ($faktor[$satuan] ?? 1), 2);
+        }
+
+        if ($merge) {
+            $request->merge($merge);
+        }
     }
 }

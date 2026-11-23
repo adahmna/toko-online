@@ -87,7 +87,7 @@ class LiveChatController extends Controller
     private const FAQ_TITLE     = 'Ada yang bisa kami bantu hari ini?';
     private const ORDER_TEXT  = 'Terima kasih atas pesanan Anda! Harap konfirmasi bahwa alamat pengiriman sudah benar.';
     private const THANKS_TEXT = 'Terima kasih telah mengonfirmasi alamat Anda.';
-private const AUTO_NAME      = 'BSI Cyber Store';
+    private const AUTO_NAME      = 'BSI Cyber Store';
     private const DELETED_NAME   = 'Customer ini sudah tidak aktif (dihapus)';
     private const FROZEN_MESSAGE = 'Akun Anda sudah dibekukan, sehingga tidak dapat menghubungi admin. Silakan hubungi pihak toko untuk informasi lebih lanjut.';
     private const AUTO_TEXT      = 'Halo! Saat ini admin sedang offline. Jadwal operasional kami 07:00 - 22:00 WIB. '
@@ -223,18 +223,41 @@ private const AUTO_NAME      = 'BSI Cyber Store';
             return response()->json(['message' => 'Pesanan ini tidak bisa dibatalkan otomatis. Silakan hubungi admin lewat chat.'], 422);
         }
 
-        // batalkan transaksi di Midtrans (kalau sudah dibuat) supaya tidak bisa dibayar setelah dibatalkan
+        // batalkan transaksi di Midtrans pakai order_id yang benar (midtrans_order_id), bukan kode_pesanan
         try {
             \Midtrans\Config::$serverKey    = config('midtrans.server_key');
             \Midtrans\Config::$isProduction = config('midtrans.is_production');
-            \Midtrans\Transaction::cancel($o->kode_pesanan);
+            \Midtrans\Transaction::cancel($o->midtrans_order_id ?: $o->kode_pesanan);
         } catch (\Throwable $e) {
             // transaksi belum dibuat di Midtrans / sudah tidak aktif: abaikan
         }
 
-        // update bersyarat: hanya kalau status belum berubah sejak dibaca
-        $updated = Pesanan::where('id', $o->id)->where('status', $o->status)->update(['status' => 'Dibatalkan']);
-        if (!$updated) {
+        // ubah status + kembalikan stok secara atomik
+        $berhasil = DB::transaction(function () use ($o) {
+            $p = Pesanan::where('id', $o->id)->lockForUpdate()->first();
+            if (!$p) {
+                return false;
+            }
+
+            // callback Midtrans 'cancel' mungkin sudah membatalkan & mengembalikan stok lebih dulu
+            if ($this->orderPhase($p) === 'cancelled') {
+                return true;
+            }
+
+            if ($p->status !== $o->status) {
+                return false;
+            }
+
+            $p->update(['status' => 'Dibatalkan']);
+
+            foreach (\App\Models\PesananDetail::where('pesanan_id', $p->id)->get() as $d) {
+                Produk::where('id', $d->produk_id)->increment('stok', $d->jumlah);
+            }
+
+            return true;
+        });
+
+        if (!$berhasil) {
             return response()->json(['message' => 'Status pesanan baru saja berubah. Muat ulang lalu coba lagi.'], 409);
         }
 
@@ -613,7 +636,7 @@ private const AUTO_NAME      = 'BSI Cyber Store';
         return response()->json(['ok' => true]);
     }
 
-// customer menghapus chat dari tampilannya sendiri (admin tetap melihat chat-nya)
+    // customer menghapus chat dari tampilannya sendiri (admin tetap melihat chat-nya)
     public function customerClear(Request $request): JsonResponse
     {
         if ($this->frozenAccount($request)) {
@@ -1158,7 +1181,8 @@ private const AUTO_NAME      = 'BSI Cyber Store';
             'admin'    => $this->adminStatus($conv, $role),
             'typing'   => Cache::has($this->typingKey($conv, $other)),
             'blocked'  => $this->isBlocked($conv),
-            'deleted'  => $role === 'admin' && $this->isDeletedConv($conv), 'has_order' => $role === 'customer' && $conv > 0 && $this->activeOrder($conv) !== null,
+            'deleted'  => $role === 'admin' && $this->isDeletedConv($conv),
+            'has_order' => $role === 'customer' && $conv > 0 && $this->activeOrder($conv) !== null,
             'reset' => $didReset,
         ]);
     }
@@ -1583,7 +1607,8 @@ private const AUTO_NAME      = 'BSI Cyber Store';
             'address' => (string) ($o->alamat ?: ($u->alamat ?? '')),
         ];
     }
-/* ---------- format JSON ---------- */
+
+    /* ---------- format JSON ---------- */
 
     private function formatMany($messages): array
     {
@@ -1652,7 +1677,7 @@ private const AUTO_NAME      = 'BSI Cyber Store';
             $order = $o ? $this->orderCard($o) : ['missing' => true];
         }
 
-$reply = null;
+        $reply = null;
         if (!$deleted && $m->reply_to_id && ($r = $replies->get($m->reply_to_id))) {
             $rDeleted = !is_null($r->deleted_everyone_at);
             $reply = [
@@ -1667,7 +1692,8 @@ $reply = null;
         return array_merge($this->stateOf($m), [
             'id'         => $m->id,
             'sender'     => $m->sender,
-            'admin_name' => $adminName, 'is_bot' => ($m->sender === 'admin' && empty($m->admin_id)),
+            'admin_name' => $adminName,
+            'is_bot'     => ($m->sender === 'admin' && empty($m->admin_id)),
             'type'       => $m->type ?: 'text',
             'attachment' => $attachment,
             'product'    => $product,

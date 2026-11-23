@@ -89,6 +89,11 @@
         color: #0c5460;
     }
 
+    .status-tiba {
+        background: #e2d9f3;
+        color: #432874;
+    }
+
     .status-selesai {
         background: #d4edda;
         color: #155724;
@@ -111,6 +116,20 @@
         margin: 0;
         font-size: 14px;
         color: #2e7d32;
+    }
+
+    .tiba-box {
+        background: #f3eefb;
+        border: 1px dashed #7e57c2;
+        border-radius: 4px;
+        padding: 12px 16px;
+        margin-top: 12px;
+    }
+
+    .tiba-box p {
+        margin: 0;
+        font-size: 14px;
+        color: #432874;
     }
 
     .footer {
@@ -145,16 +164,18 @@
             <p class="greeting">Halo, <b>{{ $pesanan->user->nama }}</b>!</p>
             <p style="color:#555; font-size:14px;">Status pesanan kamu telah diperbarui. Berikut detail pesananmu:</p>
 
+            @php $status = strtolower(trim((string) $pesanan->status)); @endphp
+
             <div class="info-box">
                 <p><b>Kode Pesanan:</b> {{ $pesanan->kode_pesanan }}</p>
                 <p><b>Total Harga:</b> Rp {{ number_format($pesanan->total_harga, 0, ',', '.') }}</p>
                 <p><b>Tanggal Pesanan:</b> {{ $pesanan->created_at->format('d M Y H:i') }}</p>
                 <p><b>Status Terbaru:</b>
-                    @php $status = strtolower($pesanan->status); @endphp
                     <span class="status-badge
                         @if($status == 'menunggu pembayaran') status-menunggu
-                        @elseif($status == 'diproses') status-diproses
+                        @elseif($status == 'diproses' || $status == 'proses') status-diproses
                         @elseif($status == 'dikirim') status-dikirim
+                        @elseif($status == 'tiba') status-tiba
                         @elseif($status == 'selesai') status-selesai
                         @else status-dibatalkan
                         @endif">
@@ -167,6 +188,23 @@
             <div class="resi-box">
                 <p>🚚 <b>Nomor Resi Pengiriman:</b> {{ $pesanan->no_resi }}</p>
                 <p style="margin-top:4px; font-size:12px;">Gunakan nomor resi ini untuk melacak paketmu.</p>
+            </div>
+            @endif
+
+            @if($status == 'tiba')
+            <div class="tiba-box">
+                <p>📦 <b>Pesananmu sudah sampai di tujuan.</b></p>
+                <p style="margin-top:4px; font-size:12px;">
+                    Silakan cek paketmu. Jika sudah sesuai, konfirmasi bahwa pesanan sudah diterima.
+                    Jika ada masalah, ajukan komplain sebelum pesanan otomatis dinyatakan selesai.
+                </p>
+            </div>
+            @elseif($status == 'selesai')
+            <div class="tiba-box">
+                <p>✅ <b>Pesananmu sudah selesai.</b></p>
+                <p style="margin-top:4px; font-size:12px;">
+                    Terima kasih sudah berbelanja! Jangan lupa beri ulasan untuk produk yang kamu beli.
+                </p>
             </div>
             @endif
 

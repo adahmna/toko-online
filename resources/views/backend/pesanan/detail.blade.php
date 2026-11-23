@@ -130,9 +130,26 @@
     gap: 10px;
 }
 
-.bukti-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
-.bukti-item { width: 140px; font-size: 12px; color: #666; }
-.bukti-item img { width: 140px; height: 140px; object-fit: cover; border-radius: 8px; border: 1px solid #eee; }
+.bukti-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.bukti-item {
+    width: 140px;
+    font-size: 12px;
+    color: #666;
+}
+
+.bukti-item img {
+    width: 140px;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
 </style>
 
 <div class="detail-pesanan-card">
@@ -240,6 +257,7 @@
                             {{ $item->status=='Menunggu Pembayaran' ? 'selected' : '' }}>Menunggu Pembayaran</option>
                         <option value="Proses" {{ $item->status=='Proses' ? 'selected' : '' }}>Proses</option>
                         <option value="Dikirim" {{ $item->status=='Dikirim' ? 'selected' : '' }}>Dikirim</option>
+                        <option value="Tiba" {{ $item->status=='Tiba' ? 'selected' : '' }}>Tiba</option>
                         <option value="Selesai" {{ $item->status=='Selesai' ? 'selected' : '' }}>Selesai</option>
                         <option value="Dibatalkan" {{ $item->status=='Dibatalkan' ? 'selected' : '' }}>Dibatalkan
                         </option>
@@ -273,8 +291,7 @@
         Foto Bukti dari Penjual
     </h6>
 
-    <form action="{{ route('admin.pesanan.foto-bukti.store', $item->id) }}" method="POST"
-        enctype="multipart/form-data">
+    <form action="{{ route('admin.pesanan.foto-bukti.store', $item->id) }}" method="POST" enctype="multipart/form-data">
         @csrf
         <div class="form-section">
             <div class="form-group">
@@ -284,8 +301,7 @@
             </div>
             <div class="form-group">
                 <label>Keterangan (opsional)</label>
-                <input type="text" name="keterangan" class="form-control"
-                    placeholder="Contoh: Barang sudah dikemas">
+                <input type="text" name="keterangan" class="form-control" placeholder="Contoh: Barang sudah dikemas">
             </div>
         </div>
         <button type="submit" class="btn btn-success btn-sm">Unggah Foto</button>

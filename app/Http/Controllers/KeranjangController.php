@@ -9,6 +9,7 @@ use App\Models\Pesanan;
 use App\Models\PesananDetail;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\StokMenipisMail;
 
@@ -127,41 +128,50 @@ class KeranjangController extends Controller
                 ->with('error', 'Keranjang masih kosong!');
         }
 
-        // Cek stok semua produk
-        foreach ($keranjangs as $item) {
-            if ($item->produk->stok < $item->jumlah) {
-                return redirect()
-                    ->route('customer.keranjang.index')
-                    ->with('error', 'Stok produk "' . $item->produk->nama_produk . '" tidak mencukupi! Sisa stok: ' . $item->produk->stok);
-            }
-        }
-
         $total = $keranjangs->sum('subtotal');
 
-        // Simpan ke tabel pesanan
-        $pesanan = Pesanan::create([
-            'user_id'      => Auth::id(),
-            'kode_pesanan' => 'ORD-' . strtoupper(uniqid()),
-            'total_harga'  => $total,
-            'status'       => 'Menunggu Pembayaran',
-        ]);
+        // Cek stok, buat pesanan, dan kurangi stok dalam satu transaksi
+        // dengan lockForUpdate() supaya tidak terjadi overselling.
+        try {
+            $pesanan = DB::transaction(function () use ($keranjangs, $total) {
+                foreach ($keranjangs as $item) {
+                    $produk = Produk::where('id', $item->produk_id)->lockForUpdate()->first();
+                    if (!$produk || $produk->stok < $item->jumlah) {
+                        throw new \RuntimeException(
+                            'Stok produk "' . ($item->produk->nama_produk ?? 'produk') . '" tidak mencukupi! Sisa stok: ' . ($produk->stok ?? 0)
+                        );
+                    }
+                }
 
-        // Simpan detail pesanan dan kurangi stok
-        foreach ($keranjangs as $item) {
-            PesananDetail::create([
-                'pesanan_id'  => $pesanan->id,
-                'produk_id'   => $item->produk_id,
-                'nama_produk' => $item->produk->nama_produk,
-                'harga'       => $item->harga,
-                'jumlah'      => $item->jumlah,
-                'subtotal'    => $item->subtotal,
-            ]);
+                $pesanan = Pesanan::create([
+                    'user_id'      => Auth::id(),
+                    'kode_pesanan' => 'ORD-' . strtoupper(uniqid()),
+                    'total_harga'  => $total,
+                    'status'       => 'Menunggu Pembayaran',
+                ]);
 
-            $item->produk->decrement('stok', $item->jumlah);
+                foreach ($keranjangs as $item) {
+                    PesananDetail::create([
+                        'pesanan_id'  => $pesanan->id,
+                        'produk_id'   => $item->produk_id,
+                        'nama_produk' => $item->produk->nama_produk,
+                        'harga'       => $item->harga,
+                        'jumlah'      => $item->jumlah,
+                        'subtotal'    => $item->subtotal,
+                    ]);
+
+                    Produk::where('id', $item->produk_id)->decrement('stok', $item->jumlah);
+                }
+
+                Keranjang::where('user_id', Auth::id())->delete();
+
+                return $pesanan;
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('customer.keranjang.index')
+                ->with('error', $e->getMessage());
         }
-
-        // Kosongkan keranjang
-        Keranjang::where('user_id', Auth::id())->delete();
 
         // Cek stok menipis dan kirim email ke admin
         $produkMenipis = Produk::where('stok', '<', 5)->with('kategori')->get();
@@ -176,7 +186,7 @@ class KeranjangController extends Controller
             }
         }
 
-        // ← Redirect ke halaman pembayaran (BUKAN riwayat)
+        // Redirect ke halaman pembayaran (BUKAN riwayat)
         return redirect()->route('customer.checkout.pembayaran', $pesanan->id);
     }
 

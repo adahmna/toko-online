@@ -13,6 +13,12 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('inspire')->hourly();
+
+        // Batalkan pesanan yang menggantung (belum masuk pembayaran) & kembalikan stok
+        $schedule->command('pesanan:batalkan-menggantung')->everyFiveMinutes();
+
+        // Pesanan "Dikirim" -> "Selesai" otomatis (kurir DELIVERED atau lewat 7 hari)
+        $schedule->command('pesanan:selesaikan-terkirim')->hourly();
     }
 
     /**

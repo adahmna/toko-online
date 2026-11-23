@@ -863,6 +863,191 @@ html body header.topbar .navbar-header a.topbartoggler .waves-ripple {
     display: none !important;
 }
 </style>
+<!-- ADMIN-GLOW-CSS-START -->
+<style>
+:root { --ag-1: #27a9e3; --ag-2: #7c5cff; --ag-ease: cubic-bezier(.22, 1, .36, 1); }
+
+@keyframes agUp    { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes agSlide { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+@keyframes agPop   { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes agFlow  { to { background-position: 200% 0; } }
+
+/* ----- latar halaman ----- */
+body, .page-wrapper { background: linear-gradient(180deg, #eef2f7 0%, #f7f9fc 100%) !important; }
+
+/* ----- topbar: garis gradasi bergerak ----- */
+header.topbar { box-shadow: 0 4px 18px rgba(0, 0, 0, .25); }
+header.topbar::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: linear-gradient(90deg, var(--ag-1), var(--ag-2), var(--ag-1));
+    background-size: 200% 100%; animation: agFlow 6s linear infinite; pointer-events: none;
+}
+
+/* ----- sidebar ----- */
+@media (min-width: 768px) {
+    .left-sidebar { background: linear-gradient(180deg, #1b2330 0%, #141a25 100%) !important; box-shadow: 4px 0 24px rgba(0, 0, 0, .18); }
+}
+.sidebar-nav .sidebar-link { transition: background .25s ease, box-shadow .25s ease, padding-left .25s ease; }
+.sidebar-nav .sidebar-link i { transition: transform .25s ease; }
+.sidebar-nav .sidebar-link:hover { background: rgba(39, 169, 227, .13) !important; box-shadow: inset 3px 0 0 var(--ag-1); }
+.sidebar-nav .sidebar-link:hover i { transform: scale(1.18); }
+.sidebar-nav .sidebar-link.active,
+.sidebar-nav #sidebarnav > .sidebar-item.selected > .sidebar-link {
+    background: linear-gradient(90deg, var(--ag-1), #4f8cff) !important;
+    box-shadow: 0 6px 16px rgba(39, 169, 227, .35);
+}
+.sidebar-nav .has-arrow::after { transition: transform .3s ease; }
+
+/* submenu: item masuk bergantian saat dibuka */
+.sidebar-nav .first-level.in > li,
+.sidebar-nav .first-level.show > li { animation: agSlide .35s var(--ag-ease) both; }
+.sidebar-nav .first-level.in > li:nth-child(1), .sidebar-nav .first-level.show > li:nth-child(1) { animation-delay: .04s; }
+.sidebar-nav .first-level.in > li:nth-child(2), .sidebar-nav .first-level.show > li:nth-child(2) { animation-delay: .09s; }
+.sidebar-nav .first-level.in > li:nth-child(3), .sidebar-nav .first-level.show > li:nth-child(3) { animation-delay: .14s; }
+.sidebar-nav .first-level.in > li:nth-child(4), .sidebar-nav .first-level.show > li:nth-child(4) { animation-delay: .19s; }
+.sidebar-nav .first-level.in > li:nth-child(5), .sidebar-nav .first-level.show > li:nth-child(5) { animation-delay: .24s; }
+
+/* ----- judul halaman ----- */
+.page-titles .text-themecolor {
+    background: linear-gradient(90deg, var(--ag-1), var(--ag-2));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent !important; font-weight: 700;
+}
+
+/* ----- kartu ----- */
+.page-wrapper .card {
+    border-top-width: 0 !important; border-right-width: 0 !important; border-bottom-width: 0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 6px 22px rgba(31, 45, 61, .07) !important;
+    transition: transform .3s var(--ag-ease), box-shadow .3s ease;
+}
+.page-wrapper .card:not(:has(table)):not(:has(form)):hover {
+    transform: translateY(-5px);
+    box-shadow: 0 14px 34px rgba(31, 45, 61, .15) !important;
+}
+.page-wrapper .card-header:first-child { border-radius: 14px 14px 0 0 !important; }
+.page-wrapper .alert { border-radius: 12px !important; }
+
+/* ----- tombol, tabel, input ----- */
+.page-wrapper .btn { border-radius: 10px; transition: transform .2s ease, box-shadow .2s ease; }
+.page-wrapper .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .15); }
+.page-wrapper .table tbody tr { transition: background .2s ease; }
+.page-wrapper .table tbody tr:hover { background: rgba(39, 169, 227, .07); }
+.page-wrapper .form-control { border-radius: 10px; transition: box-shadow .2s ease, border-color .2s ease; }
+.page-wrapper .form-control:focus { border-color: var(--ag-1); box-shadow: 0 0 0 3px rgba(39, 169, 227, .2); }
+
+/* ----- dropdown notifikasi ----- */
+.notif-dropdown.show { animation: agPop .25s var(--ag-ease) both; }
+
+/* ----- konten muncul bertahap saat halaman dibuka ----- */
+.page-wrapper .container-fluid > .page-titles,
+.page-wrapper .container-fluid > :not(.row) { animation: agUp .6s var(--ag-ease) both; }
+.page-wrapper .container-fluid > .row:not(.page-titles) > [class*="col-"] {
+    animation: agUp .6s var(--ag-ease) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+}
+.container-fluid > .row > [class*="col-"]:nth-child(1)  { --i: 1; }
+.container-fluid > .row > [class*="col-"]:nth-child(2)  { --i: 2; }
+.container-fluid > .row > [class*="col-"]:nth-child(3)  { --i: 3; }
+.container-fluid > .row > [class*="col-"]:nth-child(4)  { --i: 4; }
+.container-fluid > .row > [class*="col-"]:nth-child(5)  { --i: 5; }
+.container-fluid > .row > [class*="col-"]:nth-child(6)  { --i: 6; }
+.container-fluid > .row > [class*="col-"]:nth-child(7)  { --i: 7; }
+.container-fluid > .row > [class*="col-"]:nth-child(8)  { --i: 8; }
+.container-fluid > .row > [class*="col-"]:nth-child(9)  { --i: 9; }
+.container-fluid > .row > [class*="col-"]:nth-child(10) { --i: 10; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+<!-- ADMIN-GLOW-CSS-END -->
+<!-- ADMIN-MOBILE-FIX-CSS-START -->
+<style>
+/* ===== BERANDA: konten di tengah-tengah (HP + desktop) ===== */
+.is-beranda { --jarak: 16px; }
+
+.is-beranda .page-wrapper .container-fluid {
+    display: flex !important;
+    flex-direction: column;
+    min-height: calc(100vh - var(--topbar-h, 64px) - 70px);
+    padding-top: 0 !important;
+}
+
+.is-beranda .page-wrapper .page-titles {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    min-height: 0 !important;
+    flex: 0 0 auto;
+}
+
+.is-beranda .page-wrapper .container-fluid > .page-titles + * {
+    margin-top: auto !important;
+}
+.is-beranda .page-wrapper .container-fluid > :last-child {
+    margin-bottom: auto !important;
+}
+
+.is-beranda .page-wrapper .container-fluid > .row:not(.page-titles) > [class*="col-"] {
+    margin-bottom: var(--jarak) !important;
+}
+.is-beranda .page-wrapper .container-fluid > .row:not(.page-titles) {
+    margin-bottom: 4px;
+}
+
+@media (max-width: 767px) {
+    .is-beranda .page-wrapper .container-fluid {
+        min-height: calc(100vh - var(--topbar-h, 64px) - 60px);
+    }
+}
+</style>
+<!-- ADMIN-MOBILE-FIX-CSS-END -->
+<!-- SIDEBAR-ANIM-START -->
+<style>
+/* Animasi item sidebar saat hamburger diklik (desktop = sama kayak HP) */
+@keyframes sbItemIn {
+    from { opacity: 0; transform: translateX(-28px); }
+    to   { opacity: 1; transform: none; }
+}
+.sb-anim .left-sidebar #sidebarnav > li {
+    animation: sbItemIn .35s ease both;
+}
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(1) { animation-delay: .05s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(2) { animation-delay: .10s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(3) { animation-delay: .15s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(4) { animation-delay: .20s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(5) { animation-delay: .25s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(6) { animation-delay: .30s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(7) { animation-delay: .35s; }
+.sb-anim .left-sidebar #sidebarnav > li:nth-child(8) { animation-delay: .40s; }
+
+/* latar sidebar diam, nggak ikut bergerak */
+@media (min-width: 768px) {
+    .left-sidebar { background: #1b2330 !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .sb-anim .left-sidebar #sidebarnav > li { animation: none !important; }
+}
+</style>
+<script>
+(function () {
+    var timer;
+    function jalan() {
+        var w = document.getElementById('main-wrapper');
+        if (!w) return;
+        w.classList.remove('sb-anim');
+        void w.offsetWidth; // restart animasi
+        w.classList.add('sb-anim');
+        clearTimeout(timer);
+        timer = setTimeout(function () { w.classList.remove('sb-anim'); }, 900);
+    }
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('#hamburgerToggle, .nav-toggler')) jalan();
+    });
+})();
+</script>
+<!-- SIDEBAR-ANIM-END -->
 </head>
 
 <body>
@@ -1548,6 +1733,49 @@ html body header.topbar .navbar-header a.topbartoggler .waves-ripple {
     }, true);
 })();
 </script>
+<!-- ADMIN-GLOW-JS-START -->
+<script>
+(function () {
+    if (!/\/backend\/beranda\/?$/.test(location.pathname)) return;
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var re = /^(\D*?)(\d{1,3}(?:\.\d{3})+|\d+)(\D*)$/;
+
+    function hitung() {
+        document.querySelectorAll('.page-wrapper .card *').forEach(function (el) {
+            if (el.children.length || el.closest('table')) return;
+            var t = el.textContent.trim();
+            if (!t || t.length > 24 || t.indexOf(':') > -1) return;
+            var m = t.match(re);
+            if (!m) return;
+            var pre = m[1], suf = m[3], target = parseInt(m[2].replace(/\./g, ''), 10);
+            if (!isFinite(target) || target <= 0) return;
+
+            var dur = 900, start = null;
+            function step(ts) {
+                if (start === null) start = ts;
+                var p = Math.min((ts - start) / dur, 1);
+                var e = 1 - Math.pow(1 - p, 3);
+                el.textContent = p < 1
+                    ? pre + Math.round(target * e).toLocaleString('id-ID') + suf
+                    : t;
+                if (p < 1) requestAnimationFrame(step);
+            }
+            el.textContent = pre + '0' + suf;
+            requestAnimationFrame(step);
+        });
+    }
+
+    if (document.readyState === 'complete') { setTimeout(hitung, 300); }
+    else { window.addEventListener('load', function () { setTimeout(hitung, 300); }); }
+})();
+</script>
+<!-- ADMIN-GLOW-JS-END -->
+<!-- ADMIN-MOBILE-FIX-JS-START -->
+<script>
+if (/\/backend\/beranda\/?$/.test(location.pathname)) { document.body.classList.add('is-beranda'); }
+</script>
+<!-- ADMIN-MOBILE-FIX-JS-END -->
 </body>
 
 </html>

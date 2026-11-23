@@ -68,28 +68,7 @@
                                     <span class="invalid-feedback alert-danger">{{ $message }}</span>
                                     @enderror
                                 </div>
-                                <div class="form-group">
-                                    <label>Harga</label>
-                                    {{-- Tambah onkeypress hanyaAngka() --}}
-                                    <input type="text" onkeypress="return hanyaAngka(event)" name="harga"
-                                        value="{{ old('harga') }}"
-                                        class="form-control @error('harga') is-invalid @enderror"
-                                        placeholder="Masukkan Harga Produk">
-                                    @error('harga')
-                                    <span class="invalid-feedback alert-danger">{{ $message }}</span>
-                                    @enderror
-                                </div>
-                                <div class="form-group">
-                                    <label>Berat</label>
-                                    {{-- Tambah onkeypress hanyaAngka() --}}
-                                    <input type="text" onkeypress="return hanyaAngka(event)" name="berat"
-                                        value="{{ old('berat') }}"
-                                        class="form-control @error('berat') is-invalid @enderror"
-                                        placeholder="Masukkan Berat Produk">
-                                    @error('berat')
-                                    <span class="invalid-feedback alert-danger">{{ $message }}</span>
-                                    @enderror
-                                </div>
+                                @include('backend.v_produk._harga_berat')
                                 <div class="form-group">
                                     <label>Stok</label>
                                     {{-- Tambah onkeypress hanyaAngka() --}}

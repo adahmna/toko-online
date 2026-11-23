@@ -334,6 +334,84 @@ document.addEventListener('DOMContentLoaded', function () {
 @media (max-width:800px){.pk-hero h1{font-size:30px}.pk-flow{flex-direction:column;gap:20px}.pk-flow-step{padding:0}.pk-flow-step::after{display:none}.pk-tips-grid{grid-template-columns:1fr}}
 </style>
 
+{{-- ===== MOBILE RAPI: margin teks HP seragam ===== --}}
+<style>
+@media (max-width: 768px) {
+    /* satu gutter kiri-kanan untuk seluruh halaman */
+    .panduan-fix { padding: 12px 20px 8px !important; }
+    .panduan-fix .pk-wrapper {
+        max-height: none !important;
+        overflow: visible !important;
+        padding-left: 0 !important; padding-right: 0 !important;
+        box-sizing: border-box !important;
+    }
+    .panduan-fix .pk-wrapper .pk-container { padding-left: 24px !important; padding-right: 24px !important; }
+
+    /* hero */
+    .panduan-fix .pk-wrapper .pk-hero { padding: 24px 0 28px !important; }
+    .panduan-fix .pk-wrapper .pk-hero h1 { max-width: none !important; margin: 0 0 14px !important; }
+    .panduan-fix .pk-wrapper .pk-hero p { max-width: none !important; margin: 0 0 20px !important; }
+    .panduan-fix .pk-wrapper .pk-facts { gap: 10px !important; }
+    .panduan-fix .pk-wrapper .pk-fact { flex-wrap: nowrap !important; padding: 8px 14px 8px 12px !important; }
+
+    /* section: jarak atas-bawah seragam */
+    .panduan-fix .pk-wrapper .pk-section { padding: 32px 0 !important; }
+    .panduan-fix .pk-wrapper .pk-section h2 { margin: 0 0 8px !important; }
+    .panduan-fix .pk-wrapper .pk-section .pk-lede { max-width: none !important; margin: 0 0 20px !important; }
+
+    /* kartu ekspedisi: nama di atas, layanan di bawah, rata kiri */
+    .panduan-fix .pk-wrapper .pk-ekspedisi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+    .panduan-fix .pk-wrapper .pk-ekspedisi-chip { display: block !important; padding: 12px 14px !important; }
+    .panduan-fix .pk-wrapper .pk-ekspedisi-chip .nm,
+    .panduan-fix .pk-wrapper .pk-ekspedisi-chip .ket { margin-left: 0 !important; margin-right: 0 !important; }
+    .panduan-fix .pk-wrapper .pk-ekspedisi-chip .nm { margin-bottom: 3px !important; }
+
+    /* alur: tanpa garis penghubung */
+    .panduan-fix .pk-wrapper .pk-flow { gap: 22px !important; }
+    .panduan-fix .pk-wrapper .pk-flow-step { padding: 0 !important; }
+    .panduan-fix .pk-wrapper .pk-flow-step:not(:last-child)::after { display: none !important; }
+    .panduan-fix .pk-wrapper .pk-flow-num { margin-bottom: 10px !important; }
+
+    /* daftar langkah: sejajar dengan teks lain */
+    .panduan-fix .pk-wrapper .pk-langkah { padding-left: 0 !important; }
+    .panduan-fix .pk-wrapper .pk-langkah li { gap: 14px !important; padding: 14px 0 !important; }
+    .panduan-fix .pk-wrapper .pk-langkah li > div { flex: 1 1 0; min-width: 0; }
+
+    /* kotak bisa / tidak bisa diretur */
+    .panduan-fix .pk-wrapper .pk-kondisi-grid { gap: 14px !important; margin-bottom: 28px !important; }
+    .panduan-fix .pk-wrapper .pk-kondisi-box { padding: 16px 18px !important; }
+    .panduan-fix .pk-wrapper .pk-kondisi-box h4 { margin: 0 0 10px !important; }
+    .panduan-fix .pk-wrapper .pk-kondisi-box ul { padding-left: 18px !important; margin: 0 !important; }
+    .panduan-fix .pk-wrapper .pk-kondisi-box li { margin-bottom: 6px !important; }
+    .panduan-fix .pk-wrapper .pk-kondisi-box li:last-child { margin-bottom: 0 !important; }
+
+    /* catatan refund */
+    .panduan-fix .pk-wrapper .pk-refund-note { flex-wrap: nowrap !important; gap: 12px !important; padding: 16px !important; margin-top: 20px !important; }
+    .panduan-fix .pk-wrapper .pk-refund-note i { flex-shrink: 0; }
+    .panduan-fix .pk-wrapper .pk-refund-note > div { flex: 1 1 0; min-width: 0; }
+
+    /* tips */
+    .panduan-fix .pk-wrapper .pk-tips-grid { gap: 12px !important; }
+    .panduan-fix .pk-wrapper .pk-tip { flex-wrap: nowrap !important; gap: 12px !important; padding: 16px !important; }
+    .panduan-fix .pk-wrapper .pk-tip i { flex-shrink: 0; }
+    .panduan-fix .pk-wrapper .pk-tip > div { flex: 1 1 0; min-width: 0; }
+
+    /* tabel: kotak tetap rapi, isi digeser di dalam kotak */
+    .panduan-fix .pk-wrapper .pk-table-wrap { overflow-x: auto !important; overflow-y: hidden !important; -webkit-overflow-scrolling: touch; }
+    .panduan-fix .pk-wrapper .pk-table { display: table !important; width: 100% !important; }
+    .panduan-fix .pk-wrapper .pk-table th,
+    .panduan-fix .pk-wrapper .pk-table td { padding: 12px 14px !important; }
+
+    /* CTA: kartu gelap dengan padding di semua sisi */
+    .panduan-fix .pk-wrapper .pk-cta { margin: 8px 0 20px !important; padding: 32px 20px !important; border-radius: 16px; }
+    .panduan-fix .pk-wrapper .pk-cta h2 { margin: 0 0 8px !important; }
+    .panduan-fix .pk-wrapper .pk-cta p { margin: 0 0 20px !important; }
+    .panduan-fix .pk-wrapper .pk-cta-dual { flex-direction: column; align-items: center; gap: 10px !important; }
+    .panduan-fix .pk-wrapper .pk-cta .btn-pk-primary,
+    .panduan-fix .pk-wrapper .pk-cta .btn-pk-secondary { display: block; width: 100%; max-width: 320px !important; margin-left: auto; margin-right: auto; text-align: center; padding: 13px 20px !important; }
+}
+</style>
+{{-- ===== END MOBILE RAPI ===== --}}
 <div class="pk-wrapper" style="max-height: 75vh; overflow-y: auto;">
     <div class="pk-container">
 
@@ -421,4 +499,27 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
 </div>
 </div>
+
+{{-- ===== TEKS KECIL RATA KANAN-KIRI ===== --}}
+<style>
+    .pk-hero p,
+    .pk-section .pk-lede,
+    .pk-flow-step p,
+    .pk-langkah p,
+    .pk-kondisi-box li,
+    .pk-refund-note p,
+    .pk-tip p,
+    .pk-faq details p,
+    .tk-hero p,
+    .tk-hero-aside,
+    .tk-story-text p,
+    .tk-timeline p,
+    .tk-value p {
+        text-align: justify !important;
+        text-justify: inter-word;
+    }
+    /* teks di kartu CTA tetap rata tengah */
+    .pk-cta p, .tk-cta p { text-align: center !important; }
+</style>
+{{-- ===== END TEKS KECIL RATA KANAN-KIRI ===== --}}
 @endsection

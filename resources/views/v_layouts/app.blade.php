@@ -532,144 +532,196 @@
     <![endif]-->
 
     <link rel="stylesheet" href="{{ asset('css/mobile-fix.css') }}?v={{ time() }}">
-<style>
-/* ===== ANIMASI MENU HP ===== */
+    <style>
+    /* ===== ANIMASI MENU (HP + DESKTOP) ===== */
 @keyframes navMasuk {
-    from { opacity: 0; transform: translateX(-26px); }
-    to   { opacity: 1; transform: none; }
-}
-@media (max-width: 991px) {
-    #responsive-nav.nav-buka .category-header,
-    #responsive-nav.nav-buka .menu-header,
-    #responsive-nav.nav-buka .category-list > li,
-    #responsive-nav.nav-buka .menu-list > li {
-        animation: navMasuk .5s cubic-bezier(.22, 1, .36, 1) both;
+    from {
+        opacity: 0;
+        transform: translateX(-26px);
     }
-    #responsive-nav.nav-buka .category-header { animation-delay: .05s; }
-    #responsive-nav.nav-buka .menu-header { animation-delay: .12s; }
-    #responsive-nav.nav-buka .menu-list > li:nth-child(1) { animation-delay: .18s; }
-    #responsive-nav.nav-buka .menu-list > li:nth-child(2) { animation-delay: .24s; }
-    #responsive-nav.nav-buka .menu-list > li:nth-child(3) { animation-delay: .30s; }
-    #responsive-nav.nav-buka .menu-list > li:nth-child(4) { animation-delay: .36s; }
-    #responsive-nav.nav-buka .menu-list > li:nth-child(5) { animation-delay: .42s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(1) { animation-delay: .18s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(2) { animation-delay: .24s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(3) { animation-delay: .30s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(4) { animation-delay: .36s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(5) { animation-delay: .42s; }
-    #responsive-nav.nav-buka .category-list > li:nth-child(6) { animation-delay: .48s; }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
+#responsive-nav.nav-buka .category-header,
+#responsive-nav.nav-buka .menu-header,
+#responsive-nav.nav-buka .category-list>li,
+#responsive-nav.nav-buka .menu-list>li {
+    animation: navMasuk .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+#responsive-nav.nav-buka .category-header { animation-delay: .05s; }
+#responsive-nav.nav-buka .menu-header { animation-delay: .12s; }
+
+#responsive-nav.nav-buka .menu-list>li:nth-child(1) { animation-delay: .18s; }
+#responsive-nav.nav-buka .menu-list>li:nth-child(2) { animation-delay: .24s; }
+#responsive-nav.nav-buka .menu-list>li:nth-child(3) { animation-delay: .30s; }
+#responsive-nav.nav-buka .menu-list>li:nth-child(4) { animation-delay: .36s; }
+#responsive-nav.nav-buka .menu-list>li:nth-child(5) { animation-delay: .42s; }
+
+#responsive-nav.nav-buka .category-list>li:nth-child(1) { animation-delay: .18s; }
+#responsive-nav.nav-buka .category-list>li:nth-child(2) { animation-delay: .24s; }
+#responsive-nav.nav-buka .category-list>li:nth-child(3) { animation-delay: .30s; }
+#responsive-nav.nav-buka .category-list>li:nth-child(4) { animation-delay: .36s; }
+#responsive-nav.nav-buka .category-list>li:nth-child(5) { animation-delay: .42s; }
+#responsive-nav.nav-buka .category-list>li:nth-child(6) { animation-delay: .48s; }
 /* ===== LOADING HALAMAN MEWAH ===== */
-#pageLoader {
-    position: fixed;
-    inset: 0;
-    z-index: 100000;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at 50% 40%, #1f2736 0%, #0b0f17 72%);
-    opacity: 1;
-    visibility: visible;
-    transition: opacity .5s ease, visibility .5s ease;
-    animation: plFailsafe 0s linear 8s forwards;
-}
-#pageLoader.pl-hide { opacity: 0; visibility: hidden; pointer-events: none; }
-@keyframes plFailsafe { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+    #pageLoader {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 40%, #1f2736 0%, #0b0f17 72%);
+        opacity: 1;
+        visibility: visible;
+        transition: opacity .5s ease, visibility .5s ease;
+        animation: plFailsafe 0s linear 8s forwards;
+    }
 
-.pl-logo {
-    position: relative;
-    width: 128px;
-    height: 128px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.pl-logo::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: conic-gradient(from 0deg, transparent 0deg, #F8694A 120deg, #ffd27a 200deg, transparent 300deg);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-            mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-    animation: plSpin 1.4s linear infinite;
-}
-.pl-logo::after {
-    content: "";
-    position: absolute;
-    inset: 10px;
-    border-radius: 50%;
-    border: 1px solid rgba(255, 210, 122, .25);
-    animation: plSpin 3s linear infinite reverse;
-}
-.pl-logo img {
-    width: 74px;
-    height: auto;
-    border-radius: 12px;
-    animation: plGlow 1.8s ease-in-out infinite;
-}
-.pl-brand {
-    margin-top: 26px;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 6px;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, #b88a3b 0%, #ffe9a8 40%, #F8694A 60%, #b88a3b 100%);
-    background-size: 220% auto;
-    -webkit-background-clip: text;
-            background-clip: text;
-    -webkit-text-fill-color: transparent;
-            color: transparent;
-    animation: plShine 2.4s linear infinite;
-}
-.pl-sub {
-    margin-top: 8px;
-    font-size: 11px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: rgba(232, 238, 245, .55);
-}
-.pl-bar {
-    position: relative;
-    width: 150px;
-    height: 3px;
-    margin-top: 22px;
-    border-radius: 3px;
-    overflow: hidden;
-    background: rgba(255, 255, 255, .1);
-}
-.pl-bar::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -45%;
-    width: 45%;
-    height: 100%;
-    border-radius: 3px;
-    background: linear-gradient(90deg, transparent, #F8694A, #ffd27a);
-    animation: plBar 1.3s ease-in-out infinite;
-}
-@keyframes plSpin { to { transform: rotate(360deg); } }
-@keyframes plGlow {
-    0%, 100% { filter: drop-shadow(0 0 4px rgba(248, 105, 74, .35)); transform: scale(.96); }
-    50%      { filter: drop-shadow(0 0 16px rgba(255, 210, 122, .8)); transform: scale(1.04); }
-}
-@keyframes plShine { to { background-position: -220% center; } }
-@keyframes plBar { to { left: 100%; } }
-</style>
+    #pageLoader.pl-hide {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    @keyframes plFailsafe {
+        to {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+    }
+
+    .pl-logo {
+        position: relative;
+        width: 128px;
+        height: 128px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .pl-logo::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, transparent 0deg, #F8694A 120deg, #ffd27a 200deg, transparent 300deg);
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        animation: plSpin 1.4s linear infinite;
+    }
+
+    .pl-logo::after {
+        content: "";
+        position: absolute;
+        inset: 10px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 210, 122, .25);
+        animation: plSpin 3s linear infinite reverse;
+    }
+
+    .pl-logo img {
+        width: 74px;
+        height: auto;
+        border-radius: 12px;
+        animation: plGlow 1.8s ease-in-out infinite;
+    }
+
+    .pl-brand {
+        margin-top: 26px;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 6px;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, #b88a3b 0%, #ffe9a8 40%, #F8694A 60%, #b88a3b 100%);
+        background-size: 220% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        animation: plShine 2.4s linear infinite;
+    }
+
+    .pl-sub {
+        margin-top: 8px;
+        font-size: 11px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: rgba(232, 238, 245, .55);
+    }
+
+    .pl-bar {
+        position: relative;
+        width: 150px;
+        height: 3px;
+        margin-top: 22px;
+        border-radius: 3px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, .1);
+    }
+
+    .pl-bar::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -45%;
+        width: 45%;
+        height: 100%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, transparent, #F8694A, #ffd27a);
+        animation: plBar 1.3s ease-in-out infinite;
+    }
+
+    @keyframes plSpin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @keyframes plGlow {
+
+        0%,
+        100% {
+            filter: drop-shadow(0 0 4px rgba(248, 105, 74, .35));
+            transform: scale(.96);
+        }
+
+        50% {
+            filter: drop-shadow(0 0 16px rgba(255, 210, 122, .8));
+            transform: scale(1.04);
+        }
+    }
+
+    @keyframes plShine {
+        to {
+            background-position: -220% center;
+        }
+    }
+
+    @keyframes plBar {
+        to {
+            left: 100%;
+        }
+    }
+    </style>
 </head>
 
 <body data-user="{{ auth()->check() ? (auth()->user()->nama ?? auth()->user()->name ?? '') : '' }}">
     <!-- HEADER (sekarang sticky, lihat id="siteHeader") -->
     <div id="pageLoader">
-    <div class="pl-logo"><img src="{{ asset('image/logo.png') }}" alt=""></div>
-    <div class="pl-brand">BSI Cyber Store</div>
-    <div class="pl-sub">Mohon tunggu sebentar</div>
-    <div class="pl-bar"></div>
-</div>
-<header id="siteHeader">
+        <div class="pl-logo"><img src="{{ asset('image/logo.png') }}" alt=""></div>
+        <div class="pl-brand">BSI Cyber Store</div>
+        <div class="pl-sub">Mohon tunggu sebentar</div>
+        <div class="pl-bar"></div>
+    </div>
+    <header id="siteHeader">
         <!-- top Header -->
         <div id="top-header">
             <div class="container">
@@ -878,8 +930,8 @@
                 <div id="aside"
                     class="col-md-3 {{ request()->segment(1) == '' || request()->segment(1) == 'beranda' ? '' : 'hidden-xs hidden-sm' }}">
                     <!-- aside widget -->
-{{-- terlaris-only-home --}}
-    @if (request()->segment(1) == '' || request()->segment(1) == 'beranda')
+                    {{-- terlaris-only-home --}}
+                    @if (request()->segment(1) == '' || request()->segment(1) == 'beranda')
                     <div class="aside">
                         <h3 class="aside-title">Produk Terlaris</h3>
 
@@ -912,7 +964,7 @@
                         @endforelse
                     </div>
                     <!-- /aside widget -->
-    @endif
+                    @endif
 
                     <!-- aside widget -->
                     <div class="aside">
@@ -922,7 +974,7 @@
                             $kategoriSidebar = DB::table('kategori')->orderBy('nama_kategori', 'asc')->get();
                             @endphp
                             @foreach ($kategoriSidebar as $row)
-                            <li><a href="{{ route('produk.kategori', $row->id) }}">{{ $row->nama_kategori }}</a></li>
+                            <li><a href="{{ route('produk.kategori', data_get($row, 'id')) }}">{{ data_get($row, 'nama_kategori') }}</a></li>
                             @endforeach
                         </ul>
                     </div>
@@ -952,7 +1004,7 @@
         <div class="container">
             <div class="row">
                 <!-- footer widget -->
-                <div class="col-md-3 col-sm-6 col-xs-6">
+                <div class="col-md-3 col-sm-6 col-xs-12">
                     <div class="footer">
                         <!-- footer logo -->
                         <div class="footer-logo">
@@ -1012,7 +1064,7 @@
                 <!-- /footer widget -->
 
                 <!-- footer subscribe -->
-                <div class="col-md-3 col-sm-6 col-xs-6">
+                <div class="col-md-3 col-sm-6 col-xs-12">
                     <div class="footer">
                         <h3 class="footer-header">Tetap Terhubung</h3>
                         <p>Belanja mudah, aman, dan terpercaya bersama BSI Cyber Store.</p>
@@ -1247,108 +1299,121 @@
     @endauth
 
     <!-- ===== IKON HAMBURGER JADI X (nav-icon-final) ===== -->
-<style>
-    .nav-toggle-btn i { display: inline-block; transition: transform .3s ease; }
-    .nav-toggle-btn i.fa-times { transform: rotate(90deg); }
-
-    .menu-header i, .category-header i {
-        transition: none !important;
-        transform: none !important;
-        animation: none !important;
+    <style>
+    .nav-toggle-btn i {
+        display: inline-block;
+        transition: transform .3s ease;
     }
-</style>
-<script>
-(function () {
-    var btn = document.querySelector('.nav-toggle-btn');
-    if (!btn) return;
-    var ico = btn.querySelector('i');
-    if (!ico) return;
 
-    function benarBenarTampil(el) {
-        for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
-            var cs = getComputedStyle(n);
-            if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05) return false;
+    .nav-toggle-btn i.fa-times {
+        transform: rotate(90deg);
+    }
+
+    /* animasi ikon panel diaktifkan */
+    </style>
+    <script>
+    (function() {
+        var btn = document.querySelector('.nav-toggle-btn');
+        if (!btn) return;
+        var ico = btn.querySelector('i');
+        if (!ico) return;
+
+        function benarBenarTampil(el) {
+            for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+                var cs = getComputedStyle(n);
+                if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05)
+                return false;
+            }
+            var r = el.getBoundingClientRect();
+            if (r.width < 5 || r.height < 5) return false;
+            var x = r.left + r.width / 2,
+                y = r.top + r.height / 2;
+            if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+            var top = document.elementFromPoint(x, y);
+            return !!top && (el === top || el.contains(top));
         }
-        var r = el.getBoundingClientRect();
-        if (r.width < 5 || r.height < 5) return false;
-        var x = r.left + r.width / 2, y = r.top + r.height / 2;
-        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
-        var top = document.elementFromPoint(x, y);
-        return !!top && (el === top || el.contains(top));
-    }
 
-    function menuTerbuka() {
-        if (window.innerWidth > 991) return false;
-        var h = document.querySelector('.menu-header');
-        return !!h && benarBenarTampil(h);
-    }
-
-    function sinkron() {
-        var buka = menuTerbuka();
-        ico.classList.toggle('fa-times', buka);
-        ico.classList.toggle('fa-bars', !buka);
-    }
-
-    document.addEventListener('click', function () {
-        setTimeout(sinkron, 50);
-        setTimeout(sinkron, 450);
-    }, true);
-
-    new MutationObserver(sinkron)
-        .observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class', 'style'] });
-
-    window.addEventListener('resize', sinkron);
-    sinkron();
-})();
-</script>
-<!-- ===== END IKON HAMBURGER JADI X ===== -->
-
-<!-- ===== MENU HEADER: ikon sama dengan KATEGORI, tanpa animasi ===== -->
-<style>
-    .menu-header i, .category-header i {
-        transition: none !important;
-        transform: none !important;
-        animation: none !important;
-    }
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var menuIco = document.querySelector('.menu-header i');
-    if (!menuIco) return;
-
-    // cari ikon di judul KATEGORI (di panel, bukan label di kartu produk)
-    var ikonKategori = null;
-    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    var n;
-    while ((n = w.nextNode())) {
-        if (n.nodeValue.trim().toUpperCase() !== 'KATEGORI') continue;
-        var el = n.parentElement;
-        for (var i = 0; i < 3 && el && el !== document.body; i++) {
-            var ico = el.querySelector('i[class*="fa"]');
-            if (ico && !ico.closest('.menu-header')) { ikonKategori = ico; break; }
-            el = el.parentElement;
+        function menuTerbuka() {
+            if (window.innerWidth > 991) return false;
+            var h = document.querySelector('.menu-header');
+            return !!h && benarBenarTampil(h);
         }
-        if (ikonKategori) break;
-    }
 
-    // kalau tidak ketemu, pakai ikon daftar bawaan Font Awesome
-    var kelas = ikonKategori ? ikonKategori.className : 'fa fa-list-ul';
-    menuIco.className = kelas;
-});
-</script>
-<!-- ===== END MENU HEADER STATIS ===== -->
+        function sinkron() {
+            var buka = menuTerbuka();
+            ico.classList.toggle('fa-times', buka);
+            ico.classList.toggle('fa-bars', !buka);
+        }
 
-<!-- ===== BAR ATAS: teks selamat datang jangan terpotong ===== -->
-<style>
+        document.addEventListener('click', function() {
+            setTimeout(sinkron, 50);
+            setTimeout(sinkron, 450);
+        }, true);
+
+        new MutationObserver(sinkron)
+            .observe(document.body, {
+                attributes: true,
+                subtree: true,
+                attributeFilter: ['class', 'style']
+            });
+
+        window.addEventListener('resize', sinkron);
+        sinkron();
+    })();
+    </script>
+    <!-- ===== END IKON HAMBURGER JADI X ===== -->
+
+    <!-- ===== MENU HEADER: ikon sama dengan KATEGORI, tanpa animasi ===== -->
+    <style>
+    /* animasi ikon panel diaktifkan */
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var menuIco = document.querySelector('.menu-header i');
+        if (!menuIco) return;
+
+        // cari ikon di judul KATEGORI (di panel, bukan label di kartu produk)
+        var ikonKategori = null;
+        var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        var n;
+        while ((n = w.nextNode())) {
+            if (n.nodeValue.trim().toUpperCase() !== 'KATEGORI') continue;
+            var el = n.parentElement;
+            for (var i = 0; i < 3 && el && el !== document.body; i++) {
+                var ico = el.querySelector('i[class*="fa"]');
+                if (ico && !ico.closest('.menu-header')) {
+                    ikonKategori = ico;
+                    break;
+                }
+                el = el.parentElement;
+            }
+            if (ikonKategori) break;
+        }
+
+        // kalau tidak ketemu, pakai ikon daftar bawaan Font Awesome
+        var kelas = ikonKategori ? ikonKategori.className : 'fa fa-list-ul';
+        menuIco.className = kelas;
+    });
+    </script>
+    <!-- ===== END MENU HEADER STATIS ===== -->
+
+    <!-- ===== BAR ATAS: teks selamat datang jangan terpotong ===== -->
+    <style>
     @media (max-width: 768px) {
-        .topbar-fix.container, .topbar-fix.container-fluid,
-        .topbar-fix .container, .topbar-fix .container-fluid {
+
+        .topbar-fix.container,
+        .topbar-fix.container-fluid,
+        .topbar-fix .container,
+        .topbar-fix .container-fluid {
             padding-left: 10px !important;
             padding-right: 10px !important;
         }
-        .topbar-fix, .topbar-fix * {
+
+        .topbar-fix,
+        .topbar-fix * {
             text-overflow: clip !important;
         }
+
         .topbar-fix-teks {
             white-space: normal !important;
             overflow: visible !important;
@@ -1357,28 +1422,28 @@ document.addEventListener('DOMContentLoaded', function () {
             min-width: 0;
         }
     }
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    var n;
-    while ((n = w.nextNode())) {
-        if (n.nodeValue.indexOf('Selamat datang di') === -1) continue;
-        var el = n.parentElement;
-        el.classList.add('topbar-fix-teks');
-        for (var i = 0; i < 5 && el && el !== document.body; i++) {
-            if (el.textContent.length > 300) break;
-            el.classList.add('topbar-fix');
-            el = el.parentElement;
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        var n;
+        while ((n = w.nextNode())) {
+            if (n.nodeValue.indexOf('Selamat datang di') === -1) continue;
+            var el = n.parentElement;
+            el.classList.add('topbar-fix-teks');
+            for (var i = 0; i < 5 && el && el !== document.body; i++) {
+                if (el.textContent.length > 300) break;
+                el.classList.add('topbar-fix');
+                el = el.parentElement;
+            }
+            break;
         }
-        break;
-    }
-});
-</script>
-<!-- ===== END BAR ATAS ===== -->
+    });
+    </script>
+    <!-- ===== END BAR ATAS ===== -->
 
-<!-- ===== KARTU PRODUK: tombol berdampingan + label kecil ===== -->
-<style>
+    <!-- ===== KARTU PRODUK: tombol berdampingan + label kecil ===== -->
+    <style>
     @media (max-width: 768px) {
         .aksi-produk-fix {
             display: flex !important;
@@ -1387,86 +1452,95 @@ document.addEventListener('DOMContentLoaded', function () {
             align-items: center !important;
             gap: 10px !important;
         }
-        .aksi-produk-fix > * {
+
+        .aksi-produk-fix>* {
             margin: 0 !important;
             float: none !important;
         }
-        .lbl-kecil, .lbl-kecil * {
+
+        .lbl-kecil,
+        .lbl-kecil * {
             font-size: 10px !important;
             line-height: 1.2 !important;
         }
-        .lbl-kecil, .lbl-kecil > * {
+
+        .lbl-kecil,
+        .lbl-kecil>* {
             padding: 4px 8px !important;
         }
     }
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    function adalahPesan(b) { return b.textContent.trim().toUpperCase() === 'PESAN'; }
-    var semuaPesan = Array.prototype.filter.call(document.querySelectorAll('a, button'), adalahPesan);
-
-    // 1. tombol pencarian + PESAN berdampingan
-    semuaPesan.forEach(function (b) {
-        var el = b;
-        for (var i = 0; i < 4 && el.parentElement; i++) {
-            el = el.parentElement;
-            if (el.querySelector('.fa-search, .fa-magnifying-glass, [class*="search"]')) {
-                el.classList.add('aksi-produk-fix');
-                break;
-            }
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function adalahPesan(b) {
+            return b.textContent.trim().toUpperCase() === 'PESAN';
         }
+        var semuaPesan = Array.prototype.filter.call(document.querySelectorAll('a, button'), adalahPesan);
+
+        // 1. tombol pencarian + PESAN berdampingan
+        semuaPesan.forEach(function(b) {
+            var el = b;
+            for (var i = 0; i < 4 && el.parentElement; i++) {
+                el = el.parentElement;
+                if (el.querySelector('.fa-search, .fa-magnifying-glass, [class*="search"]')) {
+                    el.classList.add('aksi-produk-fix');
+                    break;
+                }
+            }
+        });
+
+        // kartu produk = ancestor yang berisi tepat satu tombol PESAN
+        function dalamKartuProduk(el) {
+            for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+                var jumlah = Array.prototype.filter.call(p.querySelectorAll('a, button'), adalahPesan).length;
+                if (jumlah === 1) return true;
+                if (jumlah > 1) return false;
+            }
+            return false;
+        }
+
+        // 2. label Kategori: kecil hanya di kartu produk
+        var daftar = [];
+        var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        var n;
+        while ((n = w.nextNode())) {
+            if (n.nodeValue.trim().toLowerCase() === 'kategori') daftar.push(n.parentElement);
+        }
+
+        var menuHeader = document.querySelector('.menu-header');
+        daftar.forEach(function(el) {
+            if (dalamKartuProduk(el)) {
+                var p = el.parentElement;
+                if (p && p.textContent.trim().length < 40) {
+                    p.classList.add('lbl-kecil');
+                } else {
+                    el.classList.add('lbl-kecil');
+                    if (el.nextElementSibling) el.nextElementSibling.classList.add('lbl-kecil');
+                }
+            } else if (menuHeader) {
+                // judul KATEGORI di panel: samakan dengan MENU
+                var cs = getComputedStyle(menuHeader);
+                var target = el;
+                target.style.setProperty('font-size', cs.fontSize, 'important');
+                target.style.setProperty('font-weight', cs.fontWeight, 'important');
+                target.style.setProperty('letter-spacing', cs.letterSpacing, 'important');
+                target.style.setProperty('line-height', cs.lineHeight, 'important');
+                var box = el.parentElement;
+                if (box && box.textContent.trim().length < 40) {
+                    box.style.setProperty('padding-top', cs.paddingTop, 'important');
+                    box.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
+                }
+            }
+        });
     });
+    </script>
+    <!-- ===== END KARTU PRODUK ===== -->
 
-    // kartu produk = ancestor yang berisi tepat satu tombol PESAN
-    function dalamKartuProduk(el) {
-        for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-            var jumlah = Array.prototype.filter.call(p.querySelectorAll('a, button'), adalahPesan).length;
-            if (jumlah === 1) return true;
-            if (jumlah > 1) return false;
-        }
-        return false;
+    <!-- ===== NAMA USER DI ATAS IKON HEADER (MOBILE) ===== -->
+    <style>
+    .user-label-mobile {
+        display: none !important;
     }
-
-    // 2. label Kategori: kecil hanya di kartu produk
-    var daftar = [];
-    var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    var n;
-    while ((n = w.nextNode())) {
-        if (n.nodeValue.trim().toLowerCase() === 'kategori') daftar.push(n.parentElement);
-    }
-
-    var menuHeader = document.querySelector('.menu-header');
-    daftar.forEach(function (el) {
-        if (dalamKartuProduk(el)) {
-            var p = el.parentElement;
-            if (p && p.textContent.trim().length < 40) {
-                p.classList.add('lbl-kecil');
-            } else {
-                el.classList.add('lbl-kecil');
-                if (el.nextElementSibling) el.nextElementSibling.classList.add('lbl-kecil');
-            }
-        } else if (menuHeader) {
-            // judul KATEGORI di panel: samakan dengan MENU
-            var cs = getComputedStyle(menuHeader);
-            var target = el;
-            target.style.setProperty('font-size', cs.fontSize, 'important');
-            target.style.setProperty('font-weight', cs.fontWeight, 'important');
-            target.style.setProperty('letter-spacing', cs.letterSpacing, 'important');
-            target.style.setProperty('line-height', cs.lineHeight, 'important');
-            var box = el.parentElement;
-            if (box && box.textContent.trim().length < 40) {
-                box.style.setProperty('padding-top', cs.paddingTop, 'important');
-                box.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
-            }
-        }
-    });
-});
-</script>
-<!-- ===== END KARTU PRODUK ===== -->
-
-<!-- ===== NAMA USER DI ATAS IKON HEADER (MOBILE) ===== -->
-<style>
-    .user-label-mobile { display: none !important; }
 
     @media (max-width: 991px) {
         #header .header-btns.user-label-wrap {
@@ -1475,6 +1549,7 @@ document.addEventListener('DOMContentLoaded', function () {
             align-items: center;
             justify-content: flex-end;
         }
+
         .user-label-mobile {
             display: block !important;
             order: -1;
@@ -1496,31 +1571,37 @@ document.addEventListener('DOMContentLoaded', function () {
             list-style: none;
             float: none !important;
         }
-        [data-theme="dark"] .user-label-mobile { color: #f1f1f1; }
+
+        [data-theme="dark"] .user-label-mobile {
+            color: #f1f1f1;
+        }
     }
+
     @media (max-width: 480px) {
-        .user-label-mobile { font-size: 9.5px; }
+        .user-label-mobile {
+            font-size: 9.5px;
+        }
     }
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var nama = document.body.dataset.user || '';
-    if (!nama) return; // tamu (belum login): tidak ada label
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var nama = document.body.dataset.user || '';
+        if (!nama) return; // tamu (belum login): tidak ada label
 
-    var wadah = document.querySelector('#header .header-btns');
-    if (!wadah || wadah.querySelector('.user-label-mobile')) return;
+        var wadah = document.querySelector('#header .header-btns');
+        if (!wadah || wadah.querySelector('.user-label-mobile')) return;
 
-    var lbl = document.createElement('div');
-    lbl.className = 'user-label-mobile';
-    lbl.textContent = nama;
-    wadah.insertBefore(lbl, wadah.firstChild);
-    wadah.classList.add('user-label-wrap');
-});
-</script>
-<!-- ===== END NAMA USER DI ATAS IKON HEADER (MOBILE) ===== -->
+        var lbl = document.createElement('div');
+        lbl.className = 'user-label-mobile';
+        lbl.textContent = nama;
+        wadah.insertBefore(lbl, wadah.firstChild);
+        wadah.classList.add('user-label-wrap');
+    });
+    </script>
+    <!-- ===== END NAMA USER DI ATAS IKON HEADER (MOBILE) ===== -->
 
-<!-- ===== CHAT: kotak pesan lebih besar + teks di tengah ===== -->
-<style>
+    <!-- ===== CHAT: kotak pesan lebih besar + teks di tengah ===== -->
+    <style>
     .chat-input-fix {
         height: 44px !important;
         min-height: 44px !important;
@@ -1535,8 +1616,15 @@ document.addEventListener('DOMContentLoaded', function () {
         width: auto !important;
         max-width: none !important;
     }
-    .chat-input-fix::placeholder { line-height: 44px; }
-    .chat-input-fix.sedang-ngetik { line-height: 1.4 !important; padding: 11px 14px !important; }
+
+    .chat-input-fix::placeholder {
+        line-height: 44px;
+    }
+
+    .chat-input-fix.sedang-ngetik {
+        line-height: 1.4 !important;
+        padding: 11px 14px !important;
+    }
 
     .chat-ikon-kecil {
         width: 26px !important;
@@ -1546,118 +1634,549 @@ document.addEventListener('DOMContentLoaded', function () {
         margin: 0 2px !important;
         flex: 0 0 26px !important;
     }
-    .chat-ikon-kecil img, .chat-ikon-kecil svg, .chat-ikon-kecil canvas {
-        width: 20px !important; height: 20px !important;
-        max-width: 20px !important; max-height: 20px !important;
+
+    .chat-ikon-kecil img,
+    .chat-ikon-kecil svg,
+    .chat-ikon-kecil canvas {
+        width: 20px !important;
+        height: 20px !important;
+        max-width: 20px !important;
+        max-height: 20px !important;
     }
-    .chat-ikon-kecil i { font-size: 16px !important; }
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var kotak = document.querySelector('textarea[placeholder*="Ketik" i], input[placeholder*="Ketik" i]');
-    if (!kotak) { console.warn('chat: kotak pesan tidak ketemu'); return; }
 
-    kotak.classList.add('chat-input-fix');
-
-    // hanya ikon kecil di sebelah kiri kotak (klip, tas, emoji); Kirim dan mic tidak disentuh
-    var wadah = kotak.parentElement;
-    Array.prototype.forEach.call(wadah.children, function (c) {
-        if (c === kotak || c.contains(kotak)) return;
-        // hanya elemen sebelum kotak
-        if (!(c.compareDocumentPosition(kotak) & Node.DOCUMENT_POSITION_FOLLOWING)) return;
-        var info = (c.className + ' ' + c.id + ' ' + c.textContent).toLowerCase();
-        if (/kirim|send|mic|voice|record/.test(info)) return;
-        c.classList.add('chat-ikon-kecil');
-    });
-
-    function sesuaikan() {
-        var adaIsi = kotak.value.length > 0;
-        kotak.classList.toggle('sedang-ngetik', adaIsi && kotak.tagName === 'TEXTAREA');
-        if (kotak.tagName === 'TEXTAREA' && adaIsi) {
-            kotak.style.height = 'auto';
-            kotak.style.height = Math.min(kotak.scrollHeight, 120) + 'px';
-        } else {
-            kotak.style.height = '';
+    .chat-ikon-kecil i {
+        font-size: 16px !important;
+    }
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var kotak = document.querySelector('textarea[placeholder*="Ketik" i], input[placeholder*="Ketik" i]');
+        if (!kotak) {
+            console.warn('chat: kotak pesan tidak ketemu');
+            return;
         }
-    }
-    kotak.addEventListener('input', sesuaikan);
-    sesuaikan();
-});
-</script>
-<!-- ===== END CHAT ===== -->
-<script>
-(function () {
-    /* --- animasi menu HP --- */
-    var navBtn = document.querySelector('.nav-toggle-btn');
-    var nav = document.getElementById('responsive-nav');
-    if (navBtn && nav) {
-        navBtn.addEventListener('click', function () {
-            nav.classList.remove('nav-buka');
-            void nav.offsetWidth;
-            nav.classList.add('nav-buka');
+
+        kotak.classList.add('chat-input-fix');
+
+        // hanya ikon kecil di sebelah kiri kotak (klip, tas, emoji); Kirim dan mic tidak disentuh
+        var wadah = kotak.parentElement;
+        Array.prototype.forEach.call(wadah.children, function(c) {
+            if (c === kotak || c.contains(kotak)) return;
+            // hanya elemen sebelum kotak
+            if (!(c.compareDocumentPosition(kotak) & Node.DOCUMENT_POSITION_FOLLOWING)) return;
+            var info = (c.className + ' ' + c.id + ' ' + c.textContent).toLowerCase();
+            if (/kirim|send|mic|voice|record/.test(info)) return;
+            c.classList.add('chat-ikon-kecil');
         });
-    }
 
-    /* --- loading halaman --- */
-    var loader = document.getElementById('pageLoader');
-    if (!loader) return;
-    var timer;
-    function sembunyi() { clearTimeout(timer); loader.classList.add('pl-hide'); }
-    function tampil() {
-        loader.style.animation = 'none';
-        loader.classList.remove('pl-hide');
-        clearTimeout(timer);
-        timer = setTimeout(sembunyi, 15000);
-    }
-    if (document.readyState === 'complete') { setTimeout(sembunyi, 250); }
-    else { window.addEventListener('load', function () { setTimeout(sembunyi, 250); }); }
-    window.addEventListener('pageshow', function (e) { if (e.persisted) sembunyi(); });
-
-    document.addEventListener('click', function (e) {
-        var a = e.target.closest ? e.target.closest('a') : null;
-        if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
-        var href = a.getAttribute('href') || '';
-        if (!href || href.charAt(0) === '#' || /^(javascript:|mailto:|tel:)/i.test(href)) return;
-        if (a.target === '_blank' || a.hasAttribute('download') || a.hasAttribute('data-toggle')) return;
-        if (a.origin && a.origin !== location.origin) return;
-        tampil();
+        function sesuaikan() {
+            var adaIsi = kotak.value.length > 0;
+            kotak.classList.toggle('sedang-ngetik', adaIsi && kotak.tagName === 'TEXTAREA');
+            if (kotak.tagName === 'TEXTAREA' && adaIsi) {
+                kotak.style.height = 'auto';
+                kotak.style.height = Math.min(kotak.scrollHeight, 120) + 'px';
+            } else {
+                kotak.style.height = '';
+            }
+        }
+        kotak.addEventListener('input', sesuaikan);
+        sesuaikan();
     });
-    document.addEventListener('submit', function (e) { if (!e.defaultPrevented) tampil(); });
-})();
-</script>
-<script>
-/* tutup-chat-luar */
-(function () {
-    function cariPanel() {
-        var input = document.querySelector('textarea[placeholder*="Ketik" i], input[placeholder*="Ketik" i]');
-        if (!input) return null;
-        for (var el = input.parentElement; el && el !== document.body; el = el.parentElement) {
-            var cs = getComputedStyle(el), r = el.getBoundingClientRect();
-            if ((cs.position === 'fixed' || cs.position === 'absolute') && r.width > 200 && r.height > 200) return el;
+    </script>
+    <!-- ===== END CHAT ===== -->
+    <script>
+    (function() {
+        /* --- animasi menu (HP + desktop) --- */
+        var navBtn = document.querySelector('.nav-toggle-btn');
+        var nav = document.getElementById('responsive-nav');
+        if (nav) {
+            // desktop: animasi jalan otomatis saat halaman dimuat
+            nav.classList.add('nav-buka');
         }
-        return null;
-    }
-    function tampil(el) {
-        var cs = getComputedStyle(el), r = el.getBoundingClientRect();
-        return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05 && r.width > 0 && r.height > 0;
-    }
-    function dalamFixedLain(target, panel) {
-        for (var el = target; el && el !== document.body; el = el.parentElement) {
-            if (el === panel) return false;
-            if (getComputedStyle(el).position === 'fixed') return true;
+        if (navBtn && nav) {
+            // HP: ulangi animasi tiap menu dibuka
+            navBtn.addEventListener('click', function() {
+                nav.classList.remove('nav-buka');
+                void nav.offsetWidth;
+                nav.classList.add('nav-buka');
+            });
         }
-        return false;
+
+        /* --- loading halaman --- */
+        var loader = document.getElementById('pageLoader');
+        if (!loader) return;
+        var timer;
+
+        function sembunyi() {
+            clearTimeout(timer);
+            loader.classList.add('pl-hide');
+        }
+
+        function tampil() {
+            loader.style.animation = 'none';
+            loader.classList.remove('pl-hide');
+            clearTimeout(timer);
+            timer = setTimeout(sembunyi, 15000);
+        }
+        if (document.readyState === 'complete') {
+            setTimeout(sembunyi, 250);
+        } else {
+            window.addEventListener('load', function() {
+                setTimeout(sembunyi, 250);
+            });
+        }
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) sembunyi();
+        });
+
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest ? e.target.closest('a') : null;
+            if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+            var href = a.getAttribute('href') || '';
+            if (!href || href.charAt(0) === '#' || /^(javascript:|mailto:|tel:)/i.test(href)) return;
+            if (a.target === '_blank' || a.hasAttribute('download') || a.hasAttribute('data-toggle'))
+        return;
+            if (a.origin && a.origin !== location.origin) return;
+            tampil();
+        });
+        document.addEventListener('submit', function(e) {
+            if (!e.defaultPrevented) tampil();
+        });
+    })();
+    </script>
+    <script>
+    /* tutup-chat-luar */
+    (function() {
+        function cariPanel() {
+            var input = document.querySelector('textarea[placeholder*="Ketik" i], input[placeholder*="Ketik" i]');
+            if (!input) return null;
+            for (var el = input.parentElement; el && el !== document.body; el = el.parentElement) {
+                var cs = getComputedStyle(el),
+                    r = el.getBoundingClientRect();
+                if ((cs.position === 'fixed' || cs.position === 'absolute') && r.width > 200 && r.height > 200)
+                    return el;
+            }
+            return null;
+        }
+
+        function tampil(el) {
+            var cs = getComputedStyle(el),
+                r = el.getBoundingClientRect();
+            return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05 && r.width >
+                0 && r.height > 0;
+        }
+
+        function dalamFixedLain(target, panel) {
+            for (var el = target; el && el !== document.body; el = el.parentElement) {
+                if (el === panel) return false;
+                if (getComputedStyle(el).position === 'fixed') return true;
+            }
+            return false;
+        }
+        document.addEventListener('click', function(e) {
+            var panel = cariPanel();
+            if (!panel || !tampil(panel)) return;
+            if (panel.contains(e.target)) return;
+            if (dalamFixedLain(e.target, panel)) return;
+            var tutup = panel.querySelector(
+                '[class*="close" i], [id*="close" i], [aria-label*="close" i], [aria-label*="tutup" i], [onclick*="close" i], [onclick*="toggle" i]'
+                );
+            if (tutup) tutup.click();
+        }, true);
+    })();
+    </script>
+    <!-- ===== FOOTER RESPONSIVE (HP) ===== -->
+    <style>
+    @media (max-width: 767px) {
+        #footer {
+            padding-top: 28px;
+            padding-bottom: 16px;
+        }
+
+        #footer .footer {
+            margin-bottom: 22px;
+        }
+
+        /* Brand: logo, deskripsi, sosmed rata tengah */
+        #footer .footer-logo {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        #footer .footer-logo img {
+            height: 46px;
+            width: auto;
+            max-width: 100%;
+        }
+
+        #footer .footer > p {
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 0;
+        }
+
+        #footer .footer-social {
+            display: flex !important;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 14px 0 0 !important;
+            padding: 0 !important;
+            list-style: none;
+        }
+
+        #footer .footer-social li {
+            float: none !important;
+            margin: 0 !important;
+        }
+
+        /* Dua kolom link berdampingan */
+        #footer .footer-header {
+            font-size: 14px;
+            margin: 0 0 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+        }
+
+        #footer .list-links li {
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        #footer .list-links li a {
+            display: block;
+            padding: 2px 0;
+        }
+
+        /* Newsletter selebar layar */
+        #footer .footer .form-group {
+            margin-bottom: 10px;
+        }
+
+        #footer .footer input.input,
+        #footer .footer input[type="email"] {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #footer .footer .primary-btn {
+            display: block;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        #footer .footer .alert {
+            text-align: left;
+        }
+
+        /* Copyright */
+        #footer hr {
+            margin: 6px 0 14px;
+        }
+
+        #footer .footer-copyright {
+            font-size: 12px;
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        #footer .col-md-offset-2 {
+            margin-left: 0;
+        }
     }
-    document.addEventListener('click', function (e) {
-        var panel = cariPanel();
-        if (!panel || !tampil(panel)) return;
-        if (panel.contains(e.target)) return;
-        if (dalamFixedLain(e.target, panel)) return;
-        var tutup = panel.querySelector('[class*="close" i], [id*="close" i], [aria-label*="close" i], [aria-label*="tutup" i], [onclick*="close" i], [onclick*="toggle" i]');
-        if (tutup) tutup.click();
-    }, true);
-})();
-</script>
+
+    @media (max-width: 380px) {
+        #footer .footer-header {
+            font-size: 13px;
+        }
+
+        #footer .list-links li {
+            font-size: 12px;
+        }
+    }
+    </style>
+    <!-- ===== END FOOTER RESPONSIVE ===== -->
+    <!-- ===== ASIDE RESPONSIVE (HP) ===== -->
+    <style>
+    @media (max-width: 991px) {
+        #aside {
+            margin-bottom: 8px;
+        }
+
+        #aside .aside {
+            margin-bottom: 26px;
+        }
+
+        /* Judul + garis bawah selebar kolom */
+        #aside .aside-title {
+            font-size: 16px;
+            margin: 0 0 16px;
+            padding-bottom: 10px;
+            position: relative;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+        }
+
+        #aside .aside-title::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            bottom: -1px;
+            width: 60px;
+            height: 2px;
+            background: #F8694A;
+        }
+
+        /* ---- Produk Terlaris: kartu horizontal ---- */
+        #aside .product-widget {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 14px;
+            position: relative !important;
+            padding: 10px !important;
+            margin: 0 0 10px !important;
+            min-height: 0 !important;
+            height: auto !important;
+            border: 1px solid rgba(128, 128, 128, 0.25);
+            border-radius: 8px;
+            float: none !important;
+            width: 100% !important;
+            box-sizing: border-box;
+        }
+
+        #aside .product-widget::before,
+        #aside .product-widget::after {
+            display: none !important;
+            content: none !important;
+        }
+
+        #aside .product-widget .product-thumb {
+            position: static !important;
+            top: auto !important;
+            left: auto !important;
+            flex: 0 0 72px !important;
+            width: 72px !important;
+            height: 72px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            float: none !important;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        #aside .product-widget .product-thumb img {
+            position: static !important;
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            object-fit: cover;
+        }
+
+        #aside .product-widget .product-body {
+            position: static !important;
+            flex: 1 1 auto;
+            min-width: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+            float: none !important;
+            text-align: left !important;
+        }
+
+        #aside .product-widget .product-name {
+            font-size: 14px;
+            line-height: 1.3;
+            margin: 0 0 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        #aside .product-widget .product-price {
+            font-size: 15px;
+            margin: 0 0 2px;
+        }
+
+        #aside .product-widget small {
+            display: block;
+            font-size: 11px;
+        }
+        /* ---- Filter Kategori: chip ---- */
+        #aside .list-links {
+            display: flex !important;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 !important;
+            padding: 0 !important;
+            list-style: none;
+        }
+
+        #aside .list-links li {
+            float: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        #aside .list-links li a {
+            display: inline-block;
+            padding: 7px 14px;
+            font-size: 13px;
+            line-height: 1.2;
+            border: 1px solid rgba(128, 128, 128, 0.4);
+            border-radius: 20px;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+
+        #aside .list-links li a:hover,
+        #aside .list-links li a:active {
+            background: #F8694A;
+            border-color: #F8694A;
+            color: #fff;
+            text-decoration: none;
+        }
+    }
+    </style>
+    <!-- ===== END ASIDE RESPONSIVE ===== -->
+    <!-- ===== ANIMASI IKON PANEL KATEGORI & MENU (panel-icon-luxe) ===== -->
+    <style>
+    .category-header i,
+    .menu-header i {
+        display: inline-block;
+        transform-origin: center;
+        /* ikon putih dengan sapuan kilau emas */
+        background-image: linear-gradient(105deg,
+            #ffffff 0%, #ffffff 38%,
+            #ffe9a8 46%, #ffc94d 50%, #ffe9a8 54%,
+            #ffffff 62%, #ffffff 100%);
+        background-size: 300% 100%;
+        background-position: 120% 0;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        color: transparent;
+        animation:
+            luxeShine 4.5s cubic-bezier(.45, 0, .25, 1) infinite,
+            luxeGlow 3.2s ease-in-out infinite;
+        transition: transform .5s cubic-bezier(.22, 1, .36, 1);
+        will-change: background-position, filter, transform;
+    }
+
+    .menu-header i {
+        animation-delay: 1.2s, .6s;
+    }
+
+    .category-header:hover i,
+    .menu-header:hover i,
+    .category-header:active i,
+    .menu-header:active i {
+        transform: scale(1.22);
+        animation:
+            luxeShine 1.6s cubic-bezier(.45, 0, .25, 1) infinite,
+            luxeGlowHover 1.8s ease-in-out infinite;
+    }
+
+    @keyframes luxeShine {
+        0%   { background-position: 120% 0; }
+        55%  { background-position: -20% 0; }
+        100% { background-position: -20% 0; }
+    }
+
+    @keyframes luxeGlow {
+        0%, 100% { filter: drop-shadow(0 0 1px rgba(255, 220, 140, .25)); }
+        50%      { filter: drop-shadow(0 0 7px rgba(255, 210, 122, .85)); }
+    }
+
+    @keyframes luxeGlowHover {
+        0%, 100% { filter: drop-shadow(0 0 5px rgba(255, 210, 122, .8)); }
+        50%      { filter: drop-shadow(0 0 12px rgba(255, 190, 80, 1)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .category-header i,
+        .menu-header i {
+            animation: none !important;
+            transition: none !important;
+            background-image: none;
+            -webkit-text-fill-color: currentColor;
+            color: inherit;
+        }
+    }
+    </style>
+    <!-- ===== END ANIMASI IKON PANEL ===== -->
+    <!-- ===== ANIMASI IKON PANEL KATEGORI & MENU (panel-icon-anim) ===== -->
+    <style>
+    .category-header i,
+    .menu-header i {
+        display: inline-block;
+        transform-origin: center;
+        animation: panelIconWiggle 2.5s ease-in-out infinite;
+    }
+
+    .menu-header i {
+        animation-delay: .4s;
+    }
+
+    .category-header:hover i,
+    .menu-header:hover i {
+        animation: panelIconSpin .6s linear infinite;
+    }
+
+    @keyframes panelIconWiggle {
+        0%, 50%, 100% { transform: rotate(0deg); }
+        10% { transform: rotate(-15deg); }
+        20% { transform: rotate(15deg); }
+        30% { transform: rotate(-10deg); }
+        40% { transform: rotate(10deg); }
+    }
+
+    @keyframes panelIconSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .category-header i,
+        .menu-header i {
+            animation: none !important;
+        }
+    }
+    </style>
+    <!-- ===== END ANIMASI IKON PANEL ===== -->
+    <!-- ===== HEADER IKUT SCROLL (header-fixed-follow) ===== -->
+    <style>
+    #siteHeader {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        z-index: 1030 !important;
+    }
+    </style>
+    <script>
+    (function() {
+        var header = document.getElementById('siteHeader');
+        if (!header) return;
+
+        function atur() {
+            document.body.style.paddingTop = header.offsetHeight + 'px';
+        }
+
+        atur();
+        window.addEventListener('load', atur);
+        window.addEventListener('resize', atur);
+        window.addEventListener('orientationchange', atur);
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(atur);
+        if (window.ResizeObserver) new ResizeObserver(atur).observe(header);
+    })();
+    </script>
+    <!-- ===== END HEADER IKUT SCROLL ===== -->
 </body>
 
 </html>

@@ -147,31 +147,8 @@
                                     @enderror
                                 </div>
 
-                                <div class="form-group">
-                                    <label>Harga</label>
-                                    <input type="text" name="harga" onkeypress="return hanyaAngka(event)"
-                                        value="{{ old('harga', $edit->harga) }}"
-                                        class="form-control @error('harga') is-invalid @enderror"
-                                        placeholder="Masukkan Harga Produk">
-                                    @error('harga')
-                                    <span class="invalid-feedback alert-danger" role="alert">
-                                        {{ $message }}
-                                    </span>
-                                    @enderror
-                                </div>
+                                @include('backend.v_produk._harga_berat')
 
-                                <div class="form-group">
-                                    <label>Berat</label>
-                                    <input type="text" name="berat" onkeypress="return hanyaAngka(event)"
-                                        value="{{ old('berat', $edit->berat) }}"
-                                        class="form-control @error('berat') is-invalid @enderror"
-                                        placeholder="Masukkan Berat Produk">
-                                    @error('berat')
-                                    <span class="invalid-feedback alert-danger" role="alert">
-                                        {{ $message }}
-                                    </span>
-                                    @enderror
-                                </div>
 
                                 <div class="form-group">
                                     <label>Stok</label>

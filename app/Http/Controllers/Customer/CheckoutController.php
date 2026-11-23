@@ -55,6 +55,12 @@ class CheckoutController extends Controller
     /**
      * Simpan metode pembayaran yang dipilih
      * POST /customer/checkout/{id}/bayar
+     *
+     * PENTING: status pesanan SENGAJA tidak diubah di sini. Status harus tetap
+     * "Menunggu Pembayaran" sampai Midtrans melaporkan hasilnya, karena callback(),
+     * selesaiMidtrans(), dan scheduler pembatalan hanya memproses pesanan dengan
+     * status itu. Kalau status diganti, stok tidak akan pernah dikembalikan
+     * saat pembayaran kedaluwarsa/dibatalkan.
      */
     public function bayar(Request $request, $id)
     {
@@ -68,9 +74,7 @@ class CheckoutController extends Controller
             'metode_pembayaran' => 'required|in:bca,mandiri,bri,bni,alfamart,indomaret',
         ]);
 
-        // Gunakan fill + save agar tidak error kalau kolom belum ada di fillable
         $pesanan->metode_pembayaran = $request->metode_pembayaran;
-        $pesanan->status            = 'Selesai Memilih Pembayaran';
         $pesanan->save();
 
         return redirect()->route('customer.checkout.selesai', $pesanan->id);
