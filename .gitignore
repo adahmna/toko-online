@@ -22,3 +22,10 @@ yarn-error.log
 
 *.bak*
 *.zip
+
+composer.txt
+cuplikan-*.txt
+hasil-*.txt
+lacak_dump.txt
+livechat.js.txt
+potongan.txt
